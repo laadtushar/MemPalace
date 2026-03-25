@@ -70,6 +70,7 @@ export interface AnalysisResult {
   themes_extracted: number;
   beliefs_extracted: number;
   sentiments_classified: number;
+  entities_extracted: number;
   insights_generated: number;
 }
 

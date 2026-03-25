@@ -3,12 +3,14 @@ use uuid::Uuid;
 
 use crate::domain::models::memory::{FactCategory, MemoryFact};
 use crate::domain::ports::document_store::IDocumentStore;
+use crate::domain::ports::graph_store::IGraphStore;
 use crate::domain::ports::llm_provider::ILlmProvider;
 use crate::domain::ports::memory_store::IMemoryStore;
 use crate::domain::ports::timeline_store::ITimelineStore;
 use crate::error::AppError;
 
 use super::belief_extractor;
+use super::entity_extractor;
 use super::insight_generator;
 use super::sentiment_tracker;
 use super::theme_extractor;
@@ -19,14 +21,16 @@ pub struct AnalysisResult {
     pub themes_extracted: usize,
     pub beliefs_extracted: usize,
     pub sentiments_classified: usize,
+    pub entities_extracted: usize,
     pub insights_generated: usize,
 }
 
-/// Run the full analysis pipeline: themes → sentiment → beliefs → insights.
+/// Run the full analysis pipeline: themes → sentiment → beliefs → entities → insights.
 pub async fn run_analysis(
     document_store: &dyn IDocumentStore,
     timeline_store: &dyn ITimelineStore,
     memory_store: &dyn IMemoryStore,
+    graph_store: &dyn IGraphStore,
     llm: &dyn ILlmProvider,
 ) -> Result<AnalysisResult, AppError> {
     // Check LLM availability
@@ -96,7 +100,18 @@ pub async fn run_analysis(
         }
     }
 
-    // Stage 5: Insight generation
+    // Stage 5: Entity extraction → graph store
+    log::info!("Analysis: extracting entities...");
+    let entities_with_sources = entity_extractor::extract_entities(&all_chunks, llm, 15).await?;
+    let entities_extracted = entities_with_sources.len();
+    for (entity, _source_chunks) in &entities_with_sources {
+        if let Err(e) = graph_store.add_node(entity) {
+            log::warn!("Failed to store entity '{}': {}", entity.name, e);
+        }
+    }
+    log::info!("Analysis: extracted {} entities", entities_extracted);
+
+    // Stage 6: Insight generation
     log::info!("Analysis: generating insights...");
     let insights = insight_generator::generate_insights(&themes, &beliefs, llm, 5).await?;
     log::info!("Analysis: generated {} insights", insights.len());
@@ -123,6 +138,7 @@ pub async fn run_analysis(
         themes_extracted: themes.len(),
         beliefs_extracted: beliefs.len(),
         sentiments_classified,
+        entities_extracted,
         insights_generated: insights.len(),
     })
 }

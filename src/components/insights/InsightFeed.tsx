@@ -96,7 +96,8 @@ export function InsightFeed() {
           <div className="mt-3 rounded-md bg-green-500/10 border border-green-500/20 px-4 py-2 text-sm text-green-400">
             <Sparkles size={14} className="inline mr-1" />
             Analysis complete: {analysisResult.themes_extracted} themes, {analysisResult.beliefs_extracted} beliefs,{" "}
-            {analysisResult.sentiments_classified} sentiments, {analysisResult.insights_generated} insights generated.
+            {analysisResult.sentiments_classified} sentiments, {analysisResult.entities_extracted} entities,{" "}
+            {analysisResult.insights_generated} insights generated.
           </div>
         )}
         {analysisError && (

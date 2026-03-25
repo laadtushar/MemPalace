@@ -16,6 +16,7 @@ pub fn run_analysis(
         state.document_store.as_ref(),
         state.timeline_store.as_ref(),
         state.memory_store.as_ref(),
+        state.graph_store.as_ref(),
         llm.as_ref(),
     ))
     .map_err(|e| e.to_string())
