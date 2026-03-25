@@ -37,6 +37,8 @@ pub fn run() {
             commands::import_dayone,
             // Search
             commands::keyword_search,
+            commands::semantic_search,
+            commands::hybrid_search,
             commands::get_document_text,
             // Timeline + Insights
             commands::get_timeline_data,

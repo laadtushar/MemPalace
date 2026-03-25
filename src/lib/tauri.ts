@@ -54,6 +54,12 @@ export interface AppStats {
   date_range: [string, string] | null;
 }
 
+export interface AnalysisResult {
+  themes_extracted: number;
+  beliefs_extracted: number;
+  insights_generated: number;
+}
+
 // ── Commands ──
 
 export const commands = {
@@ -68,15 +74,22 @@ export const commands = {
   // Search
   keywordSearch: (query: string, topK?: number) =>
     invoke<SearchResult[]>("keyword_search", { query, topK }),
+  semanticSearch: (query: string, topK?: number) =>
+    invoke<SearchResult[]>("semantic_search", { query, topK }),
+  hybridSearch: (query: string, topK?: number) =>
+    invoke<SearchResult[]>("hybrid_search", { query, topK }),
   getDocumentText: (documentId: string) =>
     invoke<string>("get_document_text", { documentId }),
 
-  // Timeline + Insights
+  // Timeline + Memory
   getTimelineData: () => invoke<TimelineDataResponse>("get_timeline_data"),
   getMemoryFacts: (category?: string) =>
     invoke<MemoryFactResponse[]>("get_memory_facts", { category }),
   deleteMemoryFact: (id: string) =>
     invoke<void>("delete_memory_fact", { id }),
+
+  // Analysis
+  runAnalysis: () => invoke<AnalysisResult>("run_analysis"),
 
   // Settings
   testOllamaConnection: () => invoke<OllamaStatus>("test_ollama_connection"),
