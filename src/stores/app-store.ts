@@ -7,6 +7,7 @@ export type View =
   | "insights"
   | "import"
   | "memory"
+  | "entities"
   | "settings";
 
 interface AppState {

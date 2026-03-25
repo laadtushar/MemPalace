@@ -49,6 +49,9 @@ pub fn run() {
             commands::delete_memory_fact,
             // Analysis
             commands::run_analysis,
+            // Entities
+            commands::list_entities,
+            commands::get_entity_graph,
             // Settings
             commands::test_ollama_connection,
             commands::get_app_stats,

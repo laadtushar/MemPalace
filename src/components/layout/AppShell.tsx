@@ -6,6 +6,7 @@ import { AskView } from "@/components/ask/AskView";
 import { InsightFeed } from "@/components/insights/InsightFeed";
 import { ImportWizard } from "@/components/import/ImportWizard";
 import { MemoryBrowser } from "@/components/memory/MemoryBrowser";
+import { EntityExplorer } from "@/components/entities/EntityExplorer";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 
 const viewComponents: Record<string, React.ReactNode> = {
@@ -15,6 +16,7 @@ const viewComponents: Record<string, React.ReactNode> = {
   insights: <InsightFeed />,
   import: <ImportWizard />,
   memory: <MemoryBrowser />,
+  entities: <EntityExplorer />,
   settings: <SettingsPage />,
 };
 

@@ -5,6 +5,7 @@ import {
   Lightbulb,
   Import,
   Brain,
+  Network,
   Settings,
 } from "lucide-react";
 import { useAppStore, type View } from "@/stores/app-store";
@@ -16,6 +17,7 @@ const navItems: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: "insights", label: "Insights", icon: <Lightbulb size={20} /> },
   { view: "import", label: "Import", icon: <Import size={20} /> },
   { view: "memory", label: "Memory", icon: <Brain size={20} /> },
+  { view: "entities", label: "Entities", icon: <Network size={20} /> },
   { view: "settings", label: "Settings", icon: <Settings size={20} /> },
 ];
 

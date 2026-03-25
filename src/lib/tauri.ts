@@ -74,6 +74,26 @@ export interface AnalysisResult {
   insights_generated: number;
 }
 
+export interface EntityResponse {
+  id: string;
+  name: string;
+  entity_type: string;
+  mention_count: number;
+  first_seen: string | null;
+  last_seen: string | null;
+}
+
+export interface EntityGraphResponse {
+  entities: EntityResponse[];
+  relationships: {
+    id: string;
+    source_entity_id: string;
+    target_entity_id: string;
+    rel_type: string;
+    weight: number;
+  }[];
+}
+
 // ── Commands ──
 
 export const commands = {
@@ -108,6 +128,12 @@ export const commands = {
 
   // Analysis
   runAnalysis: () => invoke<AnalysisResult>("run_analysis"),
+
+  // Entities
+  listEntities: (entityType?: string) =>
+    invoke<EntityResponse[]>("list_entities", { entityType }),
+  getEntityGraph: (entityId: string, depth?: number) =>
+    invoke<EntityGraphResponse>("get_entity_graph", { entityId, depth }),
 
   // Settings
   testOllamaConnection: () => invoke<OllamaStatus>("test_ollama_connection"),
