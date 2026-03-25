@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for Memory Palace","local":true,"windows":["main"],"permissions":["core:default","fs:default","fs:allow-read-dir","fs:allow-read-file","dialog:default","dialog:allow-open","dialog:allow-save","shell:default","shell:allow-open","notification:default","notification:allow-notify"]}}

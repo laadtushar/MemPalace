@@ -1,0 +1,127 @@
+use std::sync::Arc;
+
+use rusqlite::params;
+
+use crate::domain::ports::page_index::{FtsResult, IPageIndex};
+use crate::error::AppError;
+
+use super::connection::SqliteConnection;
+
+pub struct SqliteFts5Index {
+    db: Arc<SqliteConnection>,
+}
+
+impl SqliteFts5Index {
+    pub fn new(db: Arc<SqliteConnection>) -> Self {
+        Self { db }
+    }
+}
+
+impl IPageIndex for SqliteFts5Index {
+    fn index_text(&self, chunk_id: &str, text: &str) -> Result<(), AppError> {
+        // FTS5 is automatically synced via triggers on the chunks table.
+        // This method is a no-op if the chunk was inserted via IDocumentStore.
+        // It's here for manual indexing if needed.
+        let _ = (chunk_id, text);
+        Ok(())
+    }
+
+    fn index_batch(&self, items: &[(String, String)]) -> Result<(), AppError> {
+        // Same as above — FTS5 syncs via triggers
+        let _ = items;
+        Ok(())
+    }
+
+    fn search(&self, query: &str, top_k: usize) -> Result<Vec<FtsResult>, AppError> {
+        self.db.with_conn(|conn| {
+            // Use BM25 ranking. Lower bm25 score = more relevant.
+            let mut stmt = conn.prepare(
+                "SELECT c.id, snippet(chunks_fts, 0, '<b>', '</b>', '...', 32), bm25(chunks_fts)
+                 FROM chunks_fts
+                 JOIN chunks c ON c.rowid = chunks_fts.rowid
+                 WHERE chunks_fts MATCH ?1
+                 ORDER BY bm25(chunks_fts)
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![query, top_k as i64], |row| {
+                Ok(FtsResult {
+                    chunk_id: row.get(0)?,
+                    snippet: row.get(1)?,
+                    rank_score: row.get::<_, f64>(2)?.abs(), // bm25 returns negative, abs for display
+                })
+            })?;
+            let mut results = Vec::new();
+            for row in rows {
+                results.push(row?);
+            }
+            Ok(results)
+        })
+    }
+
+    fn remove(&self, chunk_id: &str) -> Result<(), AppError> {
+        // FTS5 entries are removed via trigger when chunk is deleted
+        let _ = chunk_id;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::adapters::sqlite::document_store::SqliteDocumentStore;
+    use crate::domain::models::common::SourcePlatform;
+    use crate::domain::models::document::{Chunk, Document};
+    use crate::domain::ports::document_store::IDocumentStore;
+    use chrono::Utc;
+
+    #[test]
+    fn test_fts5_search() {
+        let db = Arc::new(SqliteConnection::open_in_memory().unwrap());
+        let doc_store = SqliteDocumentStore::new(db.clone());
+        let fts = SqliteFts5Index::new(db);
+
+        // Insert a document and chunks
+        let doc = Document {
+            id: "d1".to_string(),
+            source_platform: SourcePlatform::Obsidian,
+            raw_text: "test".to_string(),
+            timestamp: Utc::now(),
+            participants: vec![],
+            metadata: serde_json::json!({}),
+            content_hash: "h1".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        doc_store.save_document(&doc).unwrap();
+
+        let chunks = vec![
+            Chunk {
+                id: "c1".to_string(),
+                document_id: "d1".to_string(),
+                text: "I went hiking in the beautiful mountains yesterday".to_string(),
+                token_count: 9,
+                position: 0,
+                created_at: Utc::now(),
+            },
+            Chunk {
+                id: "c2".to_string(),
+                document_id: "d1".to_string(),
+                text: "The weather was perfect for a beach day".to_string(),
+                token_count: 8,
+                position: 1,
+                created_at: Utc::now(),
+            },
+        ];
+        doc_store.save_chunks(&chunks).unwrap();
+
+        // Search for hiking
+        let results = fts.search("hiking", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].chunk_id, "c1");
+
+        // Search for beach
+        let results = fts.search("beach", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].chunk_id, "c2");
+    }
+}
