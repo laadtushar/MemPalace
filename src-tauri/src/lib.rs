@@ -42,6 +42,8 @@ pub fn run() {
             commands::get_timeline_data,
             commands::get_memory_facts,
             commands::delete_memory_fact,
+            // Analysis
+            commands::run_analysis,
             // Settings
             commands::test_ollama_connection,
             commands::get_app_stats,

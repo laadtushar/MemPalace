@@ -1,9 +1,11 @@
+pub mod analysis;
 pub mod import;
-pub mod search;
 pub mod insights;
+pub mod search;
 pub mod settings;
 
+pub use analysis::*;
 pub use import::*;
-pub use search::*;
 pub use insights::*;
+pub use search::*;
 pub use settings::*;
