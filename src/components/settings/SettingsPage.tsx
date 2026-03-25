@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { commands, type OllamaStatus, type AppStats } from "@/lib/tauri";
+import {
+  commands,
+  type OllamaStatus,
+  type AppStats,
+  type LlmConfig,
+} from "@/lib/tauri";
 import {
   Cpu,
   Database,
@@ -9,13 +14,19 @@ import {
   Shield,
   Terminal,
   HardDrive,
-  Info,
+  Save,
+  Loader2,
+  Key,
 } from "lucide-react";
 
 export function SettingsPage() {
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [appStats, setAppStats] = useState<AppStats | null>(null);
   const [testing, setTesting] = useState(false);
+  const [config, setConfig] = useState<LlmConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
 
   const testConnection = async () => {
     setTesting(true);
@@ -28,176 +39,219 @@ export function SettingsPage() {
     setTesting(false);
   };
 
-  const loadStats = async () => {
-    try {
-      const stats = await commands.getAppStats();
-      setAppStats(stats);
-    } catch {
-      /* ignore */
-    }
+  const loadAll = async () => {
+    testConnection();
+    commands.getAppStats().then(setAppStats).catch(() => {});
+    commands.getLlmConfig().then(setConfig).catch(() => {});
   };
 
   useEffect(() => {
-    testConnection();
-    loadStats();
+    loadAll();
   }, []);
 
-  const hasEmbeddingModel = ollamaStatus?.models.some((m) =>
-    m.includes("nomic-embed-text"),
-  );
-  const hasLlmModel = ollamaStatus?.models.some(
-    (m) => m.includes("llama3") || m.includes("mistral") || m.includes("phi"),
-  );
+  const saveConfig = async () => {
+    if (!config) return;
+    setSaving(true);
+    setSaveMsg(null);
+    setSaveErr(null);
+    try {
+      await commands.saveLlmConfig(config);
+      setSaveMsg("Configuration saved. Provider switched.");
+      // Refresh Ollama status in case URL changed
+      testConnection();
+    } catch (e) {
+      setSaveErr(String(e));
+    }
+    setSaving(false);
+  };
+
+  const updateConfig = (patch: Partial<LlmConfig>) => {
+    if (config) {
+      setConfig({ ...config, ...patch });
+      setSaveMsg(null);
+      setSaveErr(null);
+    }
+  };
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-8 h-full overflow-y-auto">
       <h1 className="text-2xl font-semibold">Settings</h1>
 
-      {/* LLM Provider */}
+      {/* ── Provider Selection ── */}
       <section className="space-y-4">
         <h2 className="text-lg font-medium flex items-center gap-2">
           <Cpu size={20} className="text-primary" /> LLM Provider
         </h2>
-        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Ollama (Local)</p>
-              <p className="text-sm text-muted-foreground">
-                http://localhost:11434
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {ollamaStatus?.connected ? (
-                <span className="flex items-center gap-1 text-green-400 text-sm">
-                  <CheckCircle size={16} /> Connected
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-red-400 text-sm">
-                  <XCircle size={16} /> Not connected
-                </span>
-              )}
-              <button
-                onClick={testConnection}
-                disabled={testing}
-                className="rounded-md bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50"
-              >
-                <RefreshCw
-                  size={14}
-                  className={testing ? "animate-spin" : ""}
-                />
-              </button>
-            </div>
-          </div>
 
-          {ollamaStatus?.connected && ollamaStatus.models.length > 0 && (
-            <div>
-              <p className="text-sm text-muted-foreground mb-1.5">
-                Available models:
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {ollamaStatus.models.map((model) => {
-                  const isEmbed = model.includes("nomic-embed") || model.includes("embed");
-                  const isActive = model.includes("llama3") || model.includes("nomic-embed");
-                  return (
-                    <span
-                      key={model}
-                      className={`rounded-md px-2 py-0.5 text-xs border ${
-                        isActive
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : "border-border bg-secondary text-muted-foreground"
-                      }`}
-                    >
-                      {model}
-                      {isEmbed && " (embedding)"}
+        {config && (
+          <div className="space-y-4">
+            {/* Provider toggle */}
+            <div className="flex gap-2">
+              {["ollama", "claude"].map((p) => (
+                <button
+                  key={p}
+                  onClick={() => updateConfig({ active_provider: p })}
+                  className={`flex-1 rounded-lg border p-3 text-sm font-medium transition-colors ${
+                    config.active_provider === p
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-card text-muted-foreground hover:border-border/80"
+                  }`}
+                >
+                  {p === "ollama" ? "Ollama (Local)" : "Claude API (Cloud)"}
+                </button>
+              ))}
+            </div>
+
+            {/* Ollama config */}
+            <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                Ollama Configuration
+                <span className="text-xs text-muted-foreground">(always used for embeddings)</span>
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground">Server URL</label>
+                  <input
+                    type="text"
+                    value={config.ollama_url}
+                    onChange={(e) => updateConfig({ ollama_url: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">LLM Model</label>
+                  <input
+                    type="text"
+                    value={config.ollama_model}
+                    onChange={(e) => updateConfig({ ollama_model: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs text-muted-foreground">Embedding Model</label>
+                  <input
+                    type="text"
+                    value={config.embedding_model}
+                    onChange={(e) => updateConfig({ embedding_model: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Ollama status */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                <div className="flex items-center gap-2 text-sm">
+                  {ollamaStatus?.connected ? (
+                    <span className="flex items-center gap-1 text-green-400">
+                      <CheckCircle size={14} /> Connected
                     </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Model status checks */}
-          {ollamaStatus?.connected && (
-            <div className="space-y-1.5 pt-2 border-t border-border/50">
-              <div className="flex items-center gap-2 text-sm">
-                {hasEmbeddingModel ? (
-                  <CheckCircle size={14} className="text-green-400" />
-                ) : (
-                  <XCircle size={14} className="text-yellow-400" />
-                )}
-                <span className={hasEmbeddingModel ? "text-foreground" : "text-muted-foreground"}>
-                  Embedding model (nomic-embed-text)
-                  {!hasEmbeddingModel && " — needed for semantic search"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                {hasLlmModel ? (
-                  <CheckCircle size={14} className="text-green-400" />
-                ) : (
-                  <XCircle size={14} className="text-yellow-400" />
-                )}
-                <span className={hasLlmModel ? "text-foreground" : "text-muted-foreground"}>
-                  LLM model (llama3.1:8b)
-                  {!hasLlmModel && " — needed for analysis & RAG"}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {ollamaStatus && !ollamaStatus.connected && (
-            <div className="rounded-md bg-secondary/50 p-3 space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Ollama is not running. Install it from{" "}
-                <span className="text-primary font-medium">ollama.com</span>,
-                then run:
-              </p>
-              <div className="rounded bg-background px-3 py-2 font-mono text-xs text-muted-foreground space-y-1">
-                <div className="flex items-center gap-2">
-                  <Terminal size={12} />
-                  <span>ollama pull nomic-embed-text</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-red-400">
+                      <XCircle size={14} /> Not connected
+                    </span>
+                  )}
+                  {ollamaStatus?.connected && (
+                    <span className="text-xs text-muted-foreground">
+                      ({ollamaStatus.models.length} models)
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Terminal size={12} />
-                  <span>ollama pull llama3.1:8b</span>
+                <button
+                  onClick={testConnection}
+                  disabled={testing}
+                  className="rounded-md bg-secondary px-3 py-1 text-xs hover:bg-secondary/80 disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={testing ? "animate-spin" : ""} />
+                </button>
+              </div>
+
+              {ollamaStatus?.connected && ollamaStatus.models.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {ollamaStatus.models.map((m) => (
+                    <span key={m} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-mono">
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {ollamaStatus && !ollamaStatus.connected && (
+                <div className="rounded bg-secondary/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
+                  <div className="flex items-center gap-1.5"><Terminal size={10} /> ollama pull nomic-embed-text</div>
+                  <div className="flex items-center gap-1.5"><Terminal size={10} /> ollama pull llama3.1:8b</div>
+                </div>
+              )}
+            </div>
+
+            {/* Claude config */}
+            <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Key size={14} /> Claude API Configuration
+                {config.active_provider === "claude" && (
+                  <span className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2 py-0 text-[10px]">
+                    active
+                  </span>
+                )}
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs text-muted-foreground">API Key</label>
+                  <input
+                    type="password"
+                    value={config.claude_api_key ?? ""}
+                    onChange={(e) =>
+                      updateConfig({
+                        claude_api_key: e.target.value || null,
+                      })
+                    }
+                    placeholder="sk-ant-..."
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Stored locally in your database. Never sent anywhere except Anthropic's API.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Model</label>
+                  <select
+                    value={config.claude_model}
+                    onChange={(e) => updateConfig({ claude_model: e.target.value })}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  >
+                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                    <option value="claude-opus-4-20250514">Claude Opus 4</option>
+                    <option value="claude-haiku-4-20250414">Claude Haiku 4</option>
+                  </select>
                 </div>
               </div>
             </div>
-          )}
-        </div>
-      </section>
 
-      {/* Model Configuration */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-medium flex items-center gap-2">
-          <Info size={20} className="text-primary" /> Model Configuration
-        </h2>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground">Embedding Model</p>
-              <p className="font-mono mt-0.5">nomic-embed-text</p>
-              <p className="text-[11px] text-muted-foreground">1024 dims, 8192 token context</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">LLM Model</p>
-              <p className="font-mono mt-0.5">llama3.1:8b</p>
-              <p className="text-[11px] text-muted-foreground">Theme/belief/insight extraction</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Chunk Size</p>
-              <p className="font-mono mt-0.5">512 tokens</p>
-              <p className="text-[11px] text-muted-foreground">50 token overlap, paragraph-aware</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Search Fusion</p>
-              <p className="font-mono mt-0.5">RRF (k=60)</p>
-              <p className="text-[11px] text-muted-foreground">Reciprocal Rank Fusion</p>
+            {/* Save button */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={saveConfig}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                Save Configuration
+              </button>
+              {saveMsg && (
+                <span className="text-sm text-green-400">{saveMsg}</span>
+              )}
+              {saveErr && (
+                <span className="text-sm text-destructive">{saveErr}</span>
+              )}
             </div>
           </div>
-        </div>
+        )}
       </section>
 
-      {/* Data Overview */}
+      {/* ── Data Overview ── */}
       <section className="space-y-4">
         <h2 className="text-lg font-medium flex items-center gap-2">
           <Database size={20} className="text-primary" /> Data Overview
@@ -207,23 +261,18 @@ export function SettingsPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {appStats.total_documents}
-                  </p>
+                  <p className="text-2xl font-bold tabular-nums">{appStats.total_documents}</p>
                   <p className="text-sm text-muted-foreground">Documents</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {appStats.total_memory_facts}
-                  </p>
+                  <p className="text-2xl font-bold tabular-nums">{appStats.total_memory_facts}</p>
                   <p className="text-sm text-muted-foreground">Memory Facts</p>
                 </div>
               </div>
               {appStats.date_range && (
                 <div className="pt-2 border-t border-border/50">
                   <p className="text-sm text-muted-foreground">
-                    Date range:{" "}
-                    {new Date(appStats.date_range[0]).toLocaleDateString()} —{" "}
+                    Date range: {new Date(appStats.date_range[0]).toLocaleDateString()} —{" "}
                     {new Date(appStats.date_range[1]).toLocaleDateString()}
                   </p>
                 </div>
@@ -235,62 +284,43 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* Storage */}
+      {/* ── Storage ── */}
       <section className="space-y-4">
         <h2 className="text-lg font-medium flex items-center gap-2">
           <HardDrive size={20} className="text-primary" /> Storage
         </h2>
         <div className="rounded-lg border border-border bg-card p-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Database</span>
-            <span className="font-mono">SQLite (WAL mode)</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Full-text search</span>
-            <span className="font-mono">FTS5 (BM25)</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Vector store</span>
-            <span className="font-mono">SQLite (cosine sim)</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Graph store</span>
-            <span className="font-mono">SQLite (adjacency + CTE)</span>
-          </div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Database</span><span className="font-mono">SQLite (WAL mode)</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Full-text search</span><span className="font-mono">FTS5 (BM25)</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Vector store</span><span className="font-mono">SQLite (cosine sim)</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Graph store</span><span className="font-mono">SQLite (adjacency + CTE)</span></div>
         </div>
       </section>
 
-      {/* Privacy */}
+      {/* ── Privacy ── */}
       <section className="space-y-4">
         <h2 className="text-lg font-medium flex items-center gap-2">
           <Shield size={20} className="text-primary" /> Privacy
         </h2>
         <div className="rounded-lg border border-border bg-card p-4 space-y-2">
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle size={14} className="text-green-400 shrink-0" />
-            <span>All data stored locally on your device</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle size={14} className="text-green-400 shrink-0" />
-            <span>Zero telemetry — no analytics, no phone-home</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle size={14} className="text-green-400 shrink-0" />
-            <span>LLM processing via Ollama — nothing leaves your machine</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle size={14} className="text-green-400 shrink-0" />
-            <span>Cloud API keys (if used) stored in OS keychain</span>
-          </div>
+          <div className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-400 shrink-0" /><span>All data stored locally on your device</span></div>
+          <div className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-400 shrink-0" /><span>Zero telemetry — no analytics, no phone-home</span></div>
+          <div className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-400 shrink-0" /><span>Embeddings always generated locally via Ollama</span></div>
+          <div className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-400 shrink-0" /><span>Cloud API keys stored in local database only</span></div>
+          {config?.active_provider === "claude" && (
+            <div className="flex items-center gap-2 text-sm text-yellow-400">
+              <XCircle size={14} className="shrink-0" />
+              <span>Claude API active — analysis prompts are sent to Anthropic's servers</span>
+            </div>
+          )}
         </div>
       </section>
 
-      {/* About */}
+      {/* ── About ── */}
       <section className="text-center text-xs text-muted-foreground pb-8">
         <p>Memory Palace v0.1.0 — MVP</p>
         <p className="mt-1">
-          Built with Rust, React, and the belief that your data should help you
-          understand yourself.
+          Built with Rust, React, and the belief that your data should help you understand yourself.
         </p>
       </section>
     </div>

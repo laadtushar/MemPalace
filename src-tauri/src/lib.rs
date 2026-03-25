@@ -52,6 +52,9 @@ pub fn run() {
             // Entities
             commands::list_entities,
             commands::get_entity_graph,
+            // Provider config
+            commands::get_llm_config,
+            commands::save_llm_config,
             // Settings
             commands::test_ollama_connection,
             commands::get_app_stats,

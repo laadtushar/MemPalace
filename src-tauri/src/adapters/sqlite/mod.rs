@@ -1,3 +1,4 @@
+pub mod config_store;
 pub mod connection;
 pub mod document_store;
 pub mod graph_store;

@@ -94,6 +94,15 @@ export interface EntityGraphResponse {
   }[];
 }
 
+export interface LlmConfig {
+  active_provider: string;
+  ollama_url: string;
+  ollama_model: string;
+  embedding_model: string;
+  claude_api_key: string | null;
+  claude_model: string;
+}
+
 // ── Commands ──
 
 export const commands = {
@@ -134,6 +143,11 @@ export const commands = {
     invoke<EntityResponse[]>("list_entities", { entityType }),
   getEntityGraph: (entityId: string, depth?: number) =>
     invoke<EntityGraphResponse>("get_entity_graph", { entityId, depth }),
+
+  // Provider config
+  getLlmConfig: () => invoke<LlmConfig>("get_llm_config"),
+  saveLlmConfig: (config: LlmConfig) =>
+    invoke<void>("save_llm_config", { config }),
 
   // Settings
   testOllamaConnection: () => invoke<OllamaStatus>("test_ollama_connection"),

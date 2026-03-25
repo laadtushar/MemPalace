@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
+use crate::adapters::llm::claude::ClaudeProvider;
 use crate::adapters::llm::ollama::OllamaProvider;
+use crate::adapters::sqlite::config_store::SqliteConfigStore;
 use crate::adapters::sqlite::connection::SqliteConnection;
 use crate::adapters::sqlite::document_store::SqliteDocumentStore;
 use crate::adapters::sqlite::graph_store::SqliteGraphStore;
@@ -29,28 +31,63 @@ pub struct AppState {
     pub timeline_store: Box<dyn ITimelineStore>,
     pub llm_provider: Arc<RwLock<Box<dyn ILlmProvider>>>,
     pub embedding_provider: Arc<RwLock<Box<dyn IEmbeddingProvider>>>,
+    pub config_store: Arc<SqliteConfigStore>,
 }
 
 impl AppState {
     /// Initialize AppState with default adapters (SQLite + Ollama).
+    /// Loads saved provider config from the config store if available.
     pub fn new(data_dir: PathBuf) -> Result<Self, AppError> {
         std::fs::create_dir_all(&data_dir)?;
         let db_path = data_dir.join("memory_palace.db");
         let db = Arc::new(SqliteConnection::open(&db_path)?);
 
         let vector_store = SqliteVectorStore::new(db.clone())?;
+        let config_store = Arc::new(SqliteConfigStore::new(db.clone()));
 
-        let ollama_llm: Box<dyn ILlmProvider> = Box::new(OllamaProvider::new(
-            "http://localhost:11434",
-            "llama3.1:8b",
-            "nomic-embed-text",
-        ));
+        // Load saved LLM config or use defaults
+        let ollama_url = config_store
+            .get("llm.ollama_url")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "http://localhost:11434".to_string());
+        let llm_model = config_store
+            .get("llm.model")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "llama3.1:8b".to_string());
+        let embed_model = config_store
+            .get("llm.embedding_model")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "nomic-embed-text".to_string());
 
-        let ollama_embed: Box<dyn IEmbeddingProvider> = Box::new(OllamaProvider::new(
-            "http://localhost:11434",
-            "llama3.1:8b",
-            "nomic-embed-text",
-        ));
+        // Check if user has configured Claude as their provider
+        let active_provider = config_store
+            .get("llm.active_provider")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "ollama".to_string());
+
+        let llm_provider: Box<dyn ILlmProvider> = if active_provider == "claude" {
+            if let Some(api_key) = config_store.get("llm.claude_api_key").ok().flatten() {
+                let claude_model = config_store
+                    .get("llm.claude_model")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+                Box::new(ClaudeProvider::new(&api_key, &claude_model))
+            } else {
+                // Fallback to Ollama if no API key
+                Box::new(OllamaProvider::new(&ollama_url, &llm_model, &embed_model))
+            }
+        } else {
+            Box::new(OllamaProvider::new(&ollama_url, &llm_model, &embed_model))
+        };
+
+        // Embedding provider is always local (Ollama) for privacy
+        let ollama_embed: Box<dyn IEmbeddingProvider> =
+            Box::new(OllamaProvider::new(&ollama_url, &llm_model, &embed_model));
 
         Ok(Self {
             document_store: Box::new(SqliteDocumentStore::new(db.clone())),
@@ -59,8 +96,9 @@ impl AppState {
             page_index: Box::new(SqliteFts5Index::new(db.clone())),
             graph_store: Box::new(SqliteGraphStore::new(db.clone())),
             timeline_store: Box::new(SqliteTimelineStore::new(db)),
-            llm_provider: Arc::new(RwLock::new(ollama_llm)),
+            llm_provider: Arc::new(RwLock::new(llm_provider)),
             embedding_provider: Arc::new(RwLock::new(ollama_embed)),
+            config_store,
         })
     }
 }
