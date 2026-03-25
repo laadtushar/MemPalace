@@ -5,6 +5,7 @@ pub mod domain;
 pub mod error;
 pub mod pipeline;
 pub mod prompts;
+pub mod query;
 
 use app_state::AppState;
 use tauri::Manager;
@@ -40,6 +41,8 @@ pub fn run() {
             commands::semantic_search,
             commands::hybrid_search,
             commands::get_document_text,
+            // RAG
+            commands::ask,
             // Timeline + Insights
             commands::get_timeline_data,
             commands::get_memory_facts,

@@ -54,6 +54,17 @@ export interface AppStats {
   date_range: [string, string] | null;
 }
 
+export interface RagResponse {
+  answer: string;
+  sources: {
+    chunk_id: string;
+    document_id: string;
+    text_snippet: string;
+    timestamp: string;
+    score: number;
+  }[];
+}
+
 export interface AnalysisResult {
   themes_extracted: number;
   beliefs_extracted: number;
@@ -80,6 +91,10 @@ export const commands = {
     invoke<SearchResult[]>("hybrid_search", { query, topK }),
   getDocumentText: (documentId: string) =>
     invoke<string>("get_document_text", { documentId }),
+
+  // RAG
+  ask: (query: string) =>
+    invoke<RagResponse>("ask", { query }),
 
   // Timeline + Memory
   getTimelineData: () => invoke<TimelineDataResponse>("get_timeline_data"),

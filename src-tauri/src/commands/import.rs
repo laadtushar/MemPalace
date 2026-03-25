@@ -41,9 +41,12 @@ fn run_import(
         state.document_store.as_ref(),
         state.timeline_store.as_ref(),
         state.page_index.as_ref(),
-    );
+    )
+    .with_vector_store(state.vector_store.as_ref());
+    // Note: Embedding generation requires Ollama running.
+    // Embeddings can be generated post-import via the "run_analysis" command
+    // or when semantic search is first used.
 
-    // Run the async orchestrator in a blocking context
     tauri::async_runtime::block_on(
         orchestrator.ingest(adapter, path, Some(&progress_cb)),
     )

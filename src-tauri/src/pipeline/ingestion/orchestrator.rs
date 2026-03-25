@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::ports::document_store::IDocumentStore;
 use crate::domain::ports::embedding_provider::IEmbeddingProvider;
 use crate::domain::ports::page_index::IPageIndex;
 use crate::domain::ports::timeline_store::ITimelineStore;
+use crate::domain::ports::vector_store::IVectorStore;
 use crate::error::AppError;
 
 use super::chunker::{chunk_text, ChunkerConfig};
@@ -16,6 +18,7 @@ use super::source_adapters::SourceAdapter;
 pub struct ImportSummary {
     pub documents_imported: usize,
     pub chunks_created: usize,
+    pub embeddings_generated: usize,
     pub duplicates_skipped: usize,
     pub errors: Vec<String>,
     pub duration_ms: u64,
@@ -25,13 +28,12 @@ pub struct ImportSummary {
 pub type ProgressCallback = Box<dyn Fn(&str, usize, usize, &str) + Send>;
 
 /// Orchestrates the full ingestion pipeline:
-/// parse → dedup → normalize → chunk → store → FTS index
-///
-/// Embedding generation is optional (requires Ollama running).
+/// parse → dedup → normalize → chunk → store → FTS index → embed → vector store
 pub struct IngestionOrchestrator<'a> {
     document_store: &'a dyn IDocumentStore,
     timeline_store: &'a dyn ITimelineStore,
-    _page_index: &'a dyn IPageIndex, // FTS5 auto-syncs via triggers
+    _page_index: &'a dyn IPageIndex,
+    vector_store: Option<&'a dyn IVectorStore>,
     embedding_provider: Option<Arc<dyn IEmbeddingProvider>>,
     chunker_config: ChunkerConfig,
     embedding_batch_size: usize,
@@ -47,10 +49,16 @@ impl<'a> IngestionOrchestrator<'a> {
             document_store,
             timeline_store,
             _page_index: page_index,
+            vector_store: None,
             embedding_provider: None,
             chunker_config: ChunkerConfig::default(),
             embedding_batch_size: 10,
         }
+    }
+
+    pub fn with_vector_store(mut self, store: &'a dyn IVectorStore) -> Self {
+        self.vector_store = Some(store);
+        self
     }
 
     pub fn with_embedding_provider(mut self, provider: Arc<dyn IEmbeddingProvider>) -> Self {
@@ -58,6 +66,7 @@ impl<'a> IngestionOrchestrator<'a> {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_chunker_config(mut self, config: ChunkerConfig) -> Self {
         self.chunker_config = config;
         self
@@ -72,6 +81,7 @@ impl<'a> IngestionOrchestrator<'a> {
     ) -> Result<ImportSummary, AppError> {
         let start = std::time::Instant::now();
         let mut errors = Vec::new();
+        let mut embeddings_generated = 0;
 
         // Stage 1: Parse
         report_progress(on_progress, "parsing", 0, 0, &format!("Parsing {} files...", adapter.name()));
@@ -90,50 +100,74 @@ impl<'a> IngestionOrchestrator<'a> {
         // Stage 3: Normalize
         report_progress(on_progress, "normalize", 0, documents.len(), "Normalizing text...");
         normalize_documents(&mut documents);
-        report_progress(on_progress, "normalize", documents.len(), documents.len(), "Normalization complete");
 
         // Stage 4: Store documents + chunk + index
         let total_docs = documents.len();
         let mut chunks_created = 0;
+        let mut all_chunk_texts: Vec<(String, String)> = Vec::new(); // (chunk_id, text) for embedding
 
         for (i, doc) in documents.iter().enumerate() {
             report_progress(on_progress, "storing", i, total_docs,
                 &format!("Processing document {}/{}", i + 1, total_docs));
 
-            // Save document
             if let Err(e) = self.document_store.save_document(doc) {
                 errors.push(format!("Failed to save document {}: {}", doc.id, e));
                 continue;
             }
 
-            // Index in timeline
             if let Err(e) = self.timeline_store.index_document(doc) {
                 errors.push(format!("Failed to index document {}: {}", doc.id, e));
             }
 
-            // Chunk the document
             let chunks = chunk_text(&doc.id, &doc.raw_text, &self.chunker_config);
-            let chunk_count = chunks.len();
 
-            // Save chunks (FTS5 auto-indexes via trigger)
             if let Err(e) = self.document_store.save_chunks(&chunks) {
                 errors.push(format!("Failed to save chunks for {}: {}", doc.id, e));
                 continue;
             }
 
-            chunks_created += chunk_count;
+            // Collect chunks for embedding
+            for chunk in &chunks {
+                all_chunk_texts.push((chunk.id.clone(), chunk.text.clone()));
+            }
+            chunks_created += chunks.len();
         }
 
         report_progress(on_progress, "storing", total_docs, total_docs,
             &format!("Stored {} documents, {} chunks", total_docs, chunks_created));
 
-        // Stage 5: Generate embeddings (if provider available)
-        if let Some(ref _provider) = self.embedding_provider {
-            report_progress(on_progress, "embedding", 0, chunks_created, "Generating embeddings...");
-            // Embedding generation will be implemented when vector store is added.
-            // For now, skip this stage.
-            report_progress(on_progress, "embedding", chunks_created, chunks_created,
-                "Embedding generation deferred (vector store not yet configured)");
+        // Stage 5: Generate embeddings + store in vector store
+        if let (Some(provider), Some(vector_store)) = (&self.embedding_provider, &self.vector_store) {
+            let total_to_embed = all_chunk_texts.len();
+            report_progress(on_progress, "embedding", 0, total_to_embed, "Generating embeddings...");
+
+            for (batch_idx, batch) in all_chunk_texts.chunks(self.embedding_batch_size).enumerate() {
+                let texts: Vec<String> = batch.iter().map(|(_, t)| t.clone()).collect();
+                let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
+
+                match provider.embed_batch(&texts).await {
+                    Ok(embeddings) => {
+                        let items: Vec<(String, Vec<f32>, HashMap<String, String>)> = ids
+                            .iter()
+                            .zip(embeddings.into_iter())
+                            .map(|(id, vec)| (id.to_string(), vec, HashMap::new()))
+                            .collect();
+
+                        if let Err(e) = vector_store.upsert_batch(&items) {
+                            errors.push(format!("Failed to store embeddings batch {}: {}", batch_idx, e));
+                        } else {
+                            embeddings_generated += items.len();
+                        }
+                    }
+                    Err(e) => {
+                        errors.push(format!("Embedding batch {} failed: {}", batch_idx, e));
+                    }
+                }
+
+                let progress = std::cmp::min((batch_idx + 1) * self.embedding_batch_size, total_to_embed);
+                report_progress(on_progress, "embedding", progress, total_to_embed,
+                    &format!("Embedded {}/{} chunks", progress, total_to_embed));
+            }
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;
@@ -144,6 +178,7 @@ impl<'a> IngestionOrchestrator<'a> {
         Ok(ImportSummary {
             documents_imported: total_docs,
             chunks_created,
+            embeddings_generated,
             duplicates_skipped,
             errors,
             duration_ms,
@@ -175,7 +210,6 @@ mod tests {
     use chrono::Utc;
     use sha2::{Digest, Sha256};
 
-    /// A mock source adapter that returns pre-built documents.
     struct MockAdapter {
         docs: Vec<Document>,
     }
@@ -229,7 +263,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(summary.documents_imported, 3);
-        assert!(summary.chunks_created >= 3); // at least one chunk per doc
+        assert!(summary.chunks_created >= 3);
         assert_eq!(summary.duplicates_skipped, 0);
         assert!(summary.errors.is_empty());
     }
@@ -244,25 +278,13 @@ mod tests {
         let orchestrator = IngestionOrchestrator::new(&doc_store, &timeline_store, &page_index);
 
         let doc = make_doc("Unique content for dedup test.");
-        let adapter = MockAdapter {
-            docs: vec![doc.clone()],
-        };
+        let adapter = MockAdapter { docs: vec![doc.clone()] };
 
-        // First import
-        let s1 = orchestrator
-            .ingest(&adapter, std::path::Path::new("/fake"), None)
-            .await
-            .unwrap();
+        let s1 = orchestrator.ingest(&adapter, std::path::Path::new("/fake"), None).await.unwrap();
         assert_eq!(s1.documents_imported, 1);
 
-        // Second import of same content — should be deduped
-        let adapter2 = MockAdapter {
-            docs: vec![doc],
-        };
-        let s2 = orchestrator
-            .ingest(&adapter2, std::path::Path::new("/fake"), None)
-            .await
-            .unwrap();
+        let adapter2 = MockAdapter { docs: vec![doc] };
+        let s2 = orchestrator.ingest(&adapter2, std::path::Path::new("/fake"), None).await.unwrap();
         assert_eq!(s2.documents_imported, 0);
         assert_eq!(s2.duplicates_skipped, 1);
     }

@@ -7,7 +7,8 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.0-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![SQLite](https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/Tests-48_passing-brightgreen)](src-tauri/src/)
+[![Tests](https://img.shields.io/badge/Tests-49_passing-brightgreen)](src-tauri/src/)
+[![CI](https://github.com/laadtushar/MemPalace/actions/workflows/ci.yml/badge.svg)](https://github.com/laadtushar/MemPalace/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)]()
 [![Privacy](https://img.shields.io/badge/Privacy-Local_First-blueviolet)]()
 [![Ollama](https://img.shields.io/badge/LLM-Ollama_Compatible-black?logo=ollama)](https://ollama.com/)
@@ -44,6 +45,7 @@ People generate vast amounts of text about themselves but have **no tool to unde
 - **Hybrid search** — Reciprocal Rank Fusion combining keyword + semantic results
 - **Theme extraction** — LLM-powered monthly topic analysis with intensity scoring
 - **Belief tracking** — Extract and track beliefs, preferences, values over time
+- **RAG pipeline** — Ask natural language questions, get answers with source citations
 - **Insight generation** — AI-generated observations about personal evolution
 - **Memory facts** — Mem0-style long-term memory with contradiction detection
 
@@ -58,7 +60,7 @@ People generate vast amounts of text about themselves but have **no tool to unde
 - **Hexagonal (Ports & Adapters)** — Swap any component without touching business logic
 - **9 port interfaces** — Document, Vector, Graph, LLM, Embedding, Memory, PageIndex, Timeline, Analysis
 - **Polyglot persistence** — SQLite for documents/graphs/FTS, vector store for embeddings
-- **48 unit & integration tests** across all modules
+- **49 unit & integration tests** across all modules
 
 ---
 
@@ -291,7 +293,7 @@ Imported Documents
 ## Testing
 
 ```bash
-# Run all 48 Rust tests
+# Run all 49 Rust tests
 cd src-tauri && cargo test --lib
 
 # Type check frontend
@@ -323,6 +325,7 @@ npx vite build
 | Analysis Sentiment | 1 | Label parsing |
 | Analysis Beliefs | 1 | JSON response parsing |
 | Analysis Insights | 1 | JSON response parsing |
+| RAG Pipeline | 1 | RRF fusion scoring logic |
 
 ---
 
