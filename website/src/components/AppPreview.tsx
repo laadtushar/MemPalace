@@ -5,19 +5,23 @@ import {
   BarChart3, GitBranch, MessageCircle, Upload, Search, Brain,
   Clock, Settings, BookOpen, Sparkles, TrendingUp, Shield,
   Activity, Zap, Database, ChevronDown, Filter, ExternalLink,
+  Network, Share2, ScrollText, Lightbulb,
 } from "lucide-react";
 
-type ViewId = "timeline" | "search" | "ask" | "insights" | "evolution" | "import" | "memory" | "graph" | "settings";
+type ViewId = "timeline" | "activity" | "search" | "ask" | "insights" | "evolution" | "import" | "memory" | "entities" | "graph" | "logs" | "settings";
 
 const sidebarItems: { id: ViewId; icon: typeof Clock; label: string }[] = [
   { id: "timeline", icon: Clock, label: "Timeline" },
+  { id: "activity", icon: Activity, label: "Activity" },
   { id: "search", icon: Search, label: "Search" },
   { id: "ask", icon: MessageCircle, label: "Ask" },
-  { id: "insights", icon: Brain, label: "Insights" },
+  { id: "insights", icon: Lightbulb, label: "Insights" },
   { id: "evolution", icon: TrendingUp, label: "Evolution" },
   { id: "import", icon: Upload, label: "Import" },
-  { id: "memory", icon: BookOpen, label: "Memory" },
-  { id: "graph", icon: GitBranch, label: "Graph" },
+  { id: "memory", icon: Brain, label: "Memory" },
+  { id: "entities", icon: Network, label: "Entities" },
+  { id: "graph", icon: Share2, label: "Graph" },
+  { id: "logs", icon: ScrollText, label: "Logs" },
   { id: "settings", icon: Settings, label: "Settings" },
 ];
 
@@ -296,14 +300,126 @@ function SettingsView() {
   );
 }
 
+/* ── Activity ── */
+function ActivityView() {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+        <span className="text-sm font-semibold text-zinc-200">Activity History</span>
+        <div className="flex gap-1">
+          {["All","Imports","Analysis","Queries"].map((f,i)=>(
+            <span key={f} className={`px-2 py-0.5 text-[10px] rounded border ${i===0?"bg-violet-600/20 text-violet-300 border-violet-500/20":"bg-zinc-800 text-zinc-400 border-zinc-700"}`}>{f}</span>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 px-4 space-y-1.5 overflow-hidden">
+        {[
+          {icon:Upload, type:"Import", title:"Imported from Google Takeout", result:"847 docs, 2,341 chunks", time:"2 min ago", color:"text-blue-400"},
+          {icon:Brain, type:"Analysis", title:"Ran analysis", result:"9 themes, 21 beliefs, 66 entities", time:"5 min ago", color:"text-violet-400"},
+          {icon:Sparkles, type:"Embeddings", title:"Generated embeddings", result:"2,341 generated", time:"8 min ago", color:"text-cyan-400"},
+          {icon:MessageCircle, type:"Ask", title:"How has my career view changed?", result:"5 sources", time:"15 min ago", color:"text-emerald-400"},
+          {icon:Search, type:"Search", title:"work-life balance", result:"12 results", time:"20 min ago", color:"text-amber-400"},
+          {icon:Settings, type:"Config", title:"Switched to Gemini", result:"", time:"1 hour ago", color:"text-zinc-400"},
+        ].map((a,i)=>(
+          <div key={i} className="rounded-lg bg-zinc-800/50 border border-zinc-700/50 px-3 py-2 flex items-center gap-2.5">
+            <div className={`shrink-0 w-6 h-6 rounded-md bg-zinc-800 flex items-center justify-center ${a.color}`}><a.icon size={11}/></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] text-zinc-300 truncate">{a.title}</p>
+              <div className="flex items-center gap-2 text-[9px] text-zinc-500">{a.result&&<span>{a.result}</span>}<span>{a.time}</span></div>
+            </div>
+            <span className={`text-[8px] px-1.5 py-0.5 rounded border border-zinc-700 bg-zinc-800 text-zinc-500`}>{a.type}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Entities ── */
+function EntitiesView() {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+        <span className="text-sm font-semibold text-zinc-200">Entities</span>
+        <div className="flex gap-1">
+          {["All","People","Places","Orgs","Concepts"].map((f,i)=>(
+            <span key={f} className={`px-2 py-0.5 text-[10px] rounded border ${i===0?"bg-violet-600/20 text-violet-300 border-violet-500/20":"bg-zinc-800 text-zinc-400 border-zinc-700"}`}>{f}</span>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 px-4 space-y-1.5 overflow-hidden">
+        {[
+          {name:"Sarah", type:"Person", mentions:47, color:"bg-blue-500"},
+          {name:"London", type:"Place", mentions:32, color:"bg-emerald-500"},
+          {name:"Acme Corp", type:"Org", mentions:28, color:"bg-purple-500"},
+          {name:"Machine Learning", type:"Concept", mentions:24, color:"bg-amber-500"},
+          {name:"David", type:"Person", mentions:19, color:"bg-blue-500"},
+          {name:"Creativity", type:"Concept", mentions:16, color:"bg-amber-500"},
+          {name:"New York", type:"Place", mentions:14, color:"bg-emerald-500"},
+        ].map((e,i)=>{
+          const maxM=47;
+          return(
+          <div key={i} className="rounded-lg bg-zinc-800/50 border border-zinc-700/50 px-3 py-2 flex items-center gap-2.5">
+            <div className={`shrink-0 w-6 h-6 rounded-md ${e.color} flex items-center justify-center text-[8px] font-bold text-white`}>{e.type[0]}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between"><span className="text-[11px] text-zinc-300 font-medium">{e.name}</span><span className="text-[9px] text-zinc-500">{e.mentions}x</span></div>
+              <div className="mt-1 h-1 rounded-full bg-zinc-800 overflow-hidden"><div className="h-full bg-violet-500/60 rounded-full" style={{width:`${(e.mentions/maxM)*100}%`}}/></div>
+            </div>
+            <span className="text-[8px] px-1.5 py-0.5 rounded border border-zinc-700 bg-zinc-800 text-zinc-500">{e.type}</span>
+          </div>
+        )})}
+      </div>
+    </div>
+  );
+}
+
+/* ── Logs ── */
+function LogsView() {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+        <span className="text-sm font-semibold text-zinc-200">Application Logs</span>
+        <div className="flex gap-1 items-center">
+          <span className="px-2 py-0.5 text-[10px] rounded bg-emerald-600/20 text-emerald-400 border border-emerald-500/20">Live</span>
+          {["ALL","ERROR","WARN","INFO"].map((l,i)=>(
+            <span key={l} className={`px-1.5 py-0.5 text-[9px] rounded border ${i===3?"bg-violet-600/20 text-violet-300 border-violet-500/20":"bg-zinc-800 text-zinc-500 border-zinc-700"}`}>{l}</span>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 px-4 font-mono text-[10px] space-y-0.5 overflow-hidden">
+        {[
+          {level:"INFO", color:"text-blue-400", msg:"Application state initialized successfully"},
+          {level:"INFO", color:"text-blue-400", msg:"AppState initialized provider=gemini ollama_url=localhost:11434"},
+          {level:"INFO", color:"text-blue-400", msg:"Import scan: 847 files found. Extensions: 312 json, 201 html"},
+          {level:"INFO", color:"text-blue-400", msg:"Pass 1: Running Google Takeout adapter"},
+          {level:"INFO", color:"text-blue-400", msg:"Found 847 documents from google_takeout"},
+          {level:"WARN", color:"text-yellow-400", msg:"Embedding failed, skipping vector search"},
+          {level:"INFO", color:"text-blue-400", msg:"Analysis: extracted 9 themes"},
+          {level:"INFO", color:"text-blue-400", msg:"LLM call completed provider=gemini tokens=24577 duration=3556ms"},
+          {level:"INFO", color:"text-blue-400", msg:"Analysis complete themes=9 beliefs=21 entities=66 duration=44s"},
+          {level:"ERROR", color:"text-red-400", msg:"Gemini returned 503 Service Unavailable (rate limit)"},
+          {level:"INFO", color:"text-blue-400", msg:"RAG query complete sources=5 answer_len=262 duration=1805ms"},
+        ].map((log,i)=>(
+          <div key={i} className="flex gap-2 py-0.5 leading-tight">
+            <span className={`shrink-0 font-semibold ${log.color}`}>{log.level.padEnd(5)}</span>
+            <span className="text-zinc-400">{log.msg}</span>
+          </div>
+        ))}
+      </div>
+      <div className="px-4 py-1.5 border-t border-zinc-800 text-[9px] text-zinc-600 font-mono">memory_palace.log — C:\Users\...\AppData\Roaming\com.memorypalace.app</div>
+    </div>
+  );
+}
+
 /* ── Main AppPreview ── */
 export default function AppPreview() {
   const [activeView, setActiveView] = useState<ViewId>("timeline");
 
   const views: Record<ViewId, React.ReactNode> = {
-    timeline: <TimelineView/>, search: <SearchView/>, ask: <AskView/>,
+    timeline: <TimelineView/>, activity: <ActivityView/>, search: <SearchView/>, ask: <AskView/>,
     insights: <InsightsView/>, evolution: <EvolutionView/>, import: <ImportView/>,
-    memory: <MemoryView/>, graph: <GraphView/>, settings: <SettingsView/>,
+    memory: <MemoryView/>, entities: <EntitiesView/>, graph: <GraphView/>,
+    logs: <LogsView/>, settings: <SettingsView/>,
   };
 
   return (
