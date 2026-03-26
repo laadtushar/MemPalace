@@ -72,9 +72,15 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
-    testConnection();
+    // Load config and stats immediately (fast, local DB queries)
+    commands.getLlmConfig().then((c) => {
+      setConfig(c);
+      // Only test Ollama connection if it's the active provider
+      if (c.active_provider === "ollama") {
+        testConnection();
+      }
+    }).catch(() => {});
     commands.getAppStats().then(setAppStats).catch(() => {});
-    commands.getLlmConfig().then(setConfig).catch(() => {});
     commands.listProviderPresets().then(setPresets).catch(() => {});
   }, []);
 
@@ -548,14 +554,16 @@ export function SettingsPage() {
               {appStats.total_documents > 0 && (
                 <div className="pt-2 border-t border-border/50">
                   <button
-                    onClick={async () => {
-                      try {
-                        setSaveMsg("Generating embeddings...");
-                        const r = await commands.generateEmbeddings();
+                    onClick={() => {
+                      setSaveMsg("Generating embeddings... (this runs in background)");
+                      setSaveErr(null);
+                      // Fire and forget — don't await, let it run in background
+                      commands.generateEmbeddings().then((r) => {
                         setSaveMsg(`Embedded ${r.embeddings_generated} chunks (${r.errors.length} errors)`);
-                      } catch (e) {
+                      }).catch((e) => {
                         setSaveErr(String(e));
-                      }
+                        setSaveMsg(null);
+                      });
                     }}
                     className="rounded-md bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
                   >
@@ -1065,6 +1073,14 @@ export function SettingsPage() {
                 className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Report Issue
+              </a>
+              <a
+                href="https://github.com/laadtushar/MemPalace/blob/master/CONTRIBUTING.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Contribute
               </a>
             </div>
           </div>
