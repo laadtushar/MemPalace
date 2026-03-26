@@ -1,20 +1,35 @@
+use std::sync::LazyLock;
+
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::domain::models::common::SourcePlatform;
 use crate::domain::models::document::Document;
 
+// Pre-compiled regexes (compiled once, reused across all calls)
+static RE_SCRIPT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap());
+static RE_STYLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap());
+static RE_TAGS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
+static RE_NUM_ENTITY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"&#(\d+);").unwrap());
+static RE_WHITESPACE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\s+").unwrap());
+
 /// Strip HTML tags and decode common entities to plain text.
+/// Truncates input to 500KB to avoid regex slowdowns on huge files.
 pub fn html_to_text(html: &str) -> String {
-    // Remove script/style blocks (two separate patterns — regex crate doesn't support backreferences)
-    let re_script = regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
-    let text = re_script.replace_all(html, "");
-    let re_style = regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
-    let text = re_style.replace_all(&text, "");
+    // Cap input size to avoid regex DoS on multi-MB HTML files
+    let html = if html.len() > 512_000 { &html[..512_000] } else { html };
+    // Remove script/style blocks
+    let text = RE_SCRIPT.replace_all(html, "");
+    let text = RE_STYLE.replace_all(&text, "");
     // Remove tags
-    let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
-    let text = re_tags.replace_all(&text, " ");
+    let text = RE_TAGS.replace_all(&text, " ");
     // Decode common entities
     let text = text
         .replace("&amp;", "&")
@@ -26,8 +41,7 @@ pub fn html_to_text(html: &str) -> String {
         .replace("&nbsp;", " ")
         .replace("&#x27;", "'");
     // Decode numeric entities &#NNN;
-    let re_num = regex::Regex::new(r"&#(\d+);").unwrap();
-    let text = re_num.replace_all(&text, |caps: &regex::Captures| {
+    let text = RE_NUM_ENTITY.replace_all(&text, |caps: &regex::Captures| {
         caps[1]
             .parse::<u32>()
             .ok()
@@ -36,8 +50,7 @@ pub fn html_to_text(html: &str) -> String {
             .unwrap_or_default()
     });
     // Collapse whitespace
-    let re_ws = regex::Regex::new(r"\s+").unwrap();
-    re_ws.replace_all(&text, " ").trim().to_string()
+    RE_WHITESPACE.replace_all(&text, " ").trim().to_string()
 }
 
 /// Parse a CSV file into rows of (header → value) maps.
