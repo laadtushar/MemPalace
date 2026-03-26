@@ -239,20 +239,44 @@ export function GraphExplorer() {
       .style("pointer-events", "none")
       .style("text-shadow", labelShadow);
 
-    // Entity type icon inside node (Unicode symbols)
-    const typeIcons: Record<string, string> = {
-      person: "\u{1F464}",       // 👤
-      place: "\u{1F4CD}",        // 📍
-      organization: "\u{1F3E2}", // 🏢
-      concept: "\u{1F4A1}",      // 💡
-      topic: "\u{1F4A1}",        // 💡
+    // Entity type icon inside node (SVG paths for reliable cross-platform rendering)
+    const typeSymbols: Record<string, { path: string; scale: number }> = {
+      person: {
+        // Simple person silhouette
+        path: "M12 4a4 4 0 110 8 4 4 0 010-8zM6 20a6 6 0 0112 0",
+        scale: 0.6,
+      },
+      place: {
+        // Map pin
+        path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z",
+        scale: 0.55,
+      },
+      organization: {
+        // Building
+        path: "M3 21V3h8v4h10v14H3zm2-2h4v-2H5v2zm0-4h4v-2H5v2zm0-4h4V9H5v2zm6 8h8v-2h-8v2zm0-4h8v-2h-8v2zm0-4h2V9h-2v2zm4 0h2V9h-2v2z",
+        scale: 0.55,
+      },
+      concept: {
+        // Lightbulb
+        path: "M9 21h6v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17h8v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z",
+        scale: 0.55,
+      },
+      topic: {
+        // Lightbulb (same as concept)
+        path: "M9 21h6v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17h8v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z",
+        scale: 0.55,
+      },
     };
-    node.filter((d) => d.radius >= 12)
-      .append("text")
-      .text((d) => typeIcons[d.entity_type] ?? "")
-      .attr("text-anchor", "middle")
-      .attr("dy", (d) => d.radius >= 18 ? 5 : 4)
-      .attr("font-size", (d) => d.radius >= 18 ? "14px" : "10px")
+
+    node.filter((d) => d.radius >= 10)
+      .append("path")
+      .attr("d", (d) => typeSymbols[d.entity_type]?.path ?? "")
+      .attr("fill", "white")
+      .attr("fill-opacity", 0.9)
+      .attr("transform", (d) => {
+        const s = (typeSymbols[d.entity_type]?.scale ?? 0.5) * (d.radius / 14);
+        return `translate(${-12 * s},${-12 * s}) scale(${s})`;
+      })
       .style("pointer-events", "none");
 
     // ── Interactions ──
