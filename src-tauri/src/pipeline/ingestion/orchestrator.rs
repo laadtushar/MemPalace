@@ -228,6 +228,21 @@ mod tests {
     }
 
     impl SourceAdapter for MockAdapter {
+        fn metadata(&self) -> crate::pipeline::ingestion::source_adapters::SourceAdapterMeta {
+            crate::pipeline::ingestion::source_adapters::SourceAdapterMeta {
+                id: "mock".into(),
+                display_name: "Mock".into(),
+                icon: "file".into(),
+                takeout_url: None,
+                instructions: "".into(),
+                accepted_extensions: vec![],
+                handles_zip: false,
+                platform: crate::domain::models::common::SourcePlatform::Custom,
+            }
+        }
+        fn detect(&self, _file_listing: &[&str]) -> f32 {
+            0.0
+        }
         fn parse(&self, _path: &std::path::Path) -> Result<Vec<Document>, AppError> {
             Ok(self.docs.clone())
         }
