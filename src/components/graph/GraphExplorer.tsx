@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { commands, type EntityGraphResponse, type EntityResponse } from "@/lib/tauri";
 import * as d3 from "d3";
-import { Loader2, Share2, Maximize2, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { Loader2, Share2, Maximize2, ZoomIn, ZoomOut, RotateCcw, User, MapPin, Building, Lightbulb } from "lucide-react";
 import { NodeDetailPanel } from "./NodeDetailPanel";
 
 const NODE_COLORS: Record<string, { fill: string; glow: string }> = {
@@ -14,11 +14,11 @@ const NODE_COLORS: Record<string, { fill: string; glow: string }> = {
 const DEFAULT_COLORS = { fill: "#71717a", glow: "#a1a1aa" };
 
 const TYPES = [
-  { value: "", label: "All" },
-  { value: "person", label: "People" },
-  { value: "place", label: "Places" },
-  { value: "organization", label: "Orgs" },
-  { value: "concept", label: "Concepts" },
+  { value: "", label: "All", icon: null },
+  { value: "person", label: "People", icon: User },
+  { value: "place", label: "Places", icon: MapPin },
+  { value: "organization", label: "Orgs", icon: Building },
+  { value: "concept", label: "Concepts", icon: Lightbulb },
 ];
 
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -76,6 +76,11 @@ export function GraphExplorer() {
     svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
 
     if (graphData.entities.length === 0) return;
+
+    const isDark = !document.documentElement.classList.contains("light");
+    const labelColor = isDark ? "#a1a1aa" : "#52525b";
+    const labelShadow = isDark ? "0 1px 3px rgba(0,0,0,0.8)" : "0 1px 2px rgba(255,255,255,0.8)";
+    const edgeLabelColor = isDark ? "#52525b" : "#a1a1aa";
 
     const nodes: GraphNode[] = graphData.entities.map((e) => ({
       id: e.id,
@@ -177,7 +182,7 @@ export function GraphExplorer() {
       .join("text")
       .text((d) => d.rel_type)
       .attr("font-size", "8px")
-      .attr("fill", "#52525b")
+      .attr("fill", edgeLabelColor)
       .attr("text-anchor", "middle")
       .attr("dy", -4)
       .style("opacity", 0)
@@ -229,20 +234,25 @@ export function GraphExplorer() {
       .attr("y", 4)
       .attr("font-size", (d) => d.mention_count > 5 ? "11px" : "9px")
       .attr("font-weight", (d) => d.mention_count > 10 ? "600" : "400")
-      .attr("fill", "#a1a1aa")
+      .attr("fill", labelColor)
       .attr("opacity", (d) => d.mention_count > 2 ? 0.9 : 0.5)
       .style("pointer-events", "none")
-      .style("text-shadow", "0 1px 3px rgba(0,0,0,0.8)");
+      .style("text-shadow", labelShadow);
 
-    // Mention count badge for important nodes
-    node.filter((d) => d.mention_count >= 5)
+    // Entity type icon inside node (Unicode symbols)
+    const typeIcons: Record<string, string> = {
+      person: "\u{1F464}",       // 👤
+      place: "\u{1F4CD}",        // 📍
+      organization: "\u{1F3E2}", // 🏢
+      concept: "\u{1F4A1}",      // 💡
+      topic: "\u{1F4A1}",        // 💡
+    };
+    node.filter((d) => d.radius >= 12)
       .append("text")
-      .text((d) => d.mention_count.toString())
+      .text((d) => typeIcons[d.entity_type] ?? "")
       .attr("text-anchor", "middle")
-      .attr("dy", 4)
-      .attr("font-size", "9px")
-      .attr("font-weight", "bold")
-      .attr("fill", "white")
+      .attr("dy", (d) => d.radius >= 18 ? 5 : 4)
+      .attr("font-size", (d) => d.radius >= 18 ? "14px" : "10px")
       .style("pointer-events", "none");
 
     // ── Interactions ──
@@ -251,14 +261,16 @@ export function GraphExplorer() {
     node.on("mouseenter", function (_event, d) {
       setHoveredNode(d.id);
 
-      // Highlight this node
+      // Highlight + grow this node
       d3.select(this).select(".node-circle")
         .transition().duration(200)
+        .attr("r", d.radius * 1.4)
         .attr("filter", "url(#glow-highlight)")
         .attr("fill-opacity", 1);
 
       d3.select(this).select(".node-ring")
         .transition().duration(200)
+        .attr("r", d.radius * 1.4 + 3)
         .attr("stroke-opacity", 0.6);
 
       // Dim non-connected nodes
@@ -303,6 +315,10 @@ export function GraphExplorer() {
       node.transition().duration(300).style("opacity", 1);
       node.selectAll(".node-circle")
         .transition().duration(300)
+        .attr("r", function () {
+          const d = d3.select(this.parentNode as Element).datum() as GraphNode;
+          return d.radius;
+        })
         .attr("filter", function () {
           const d = d3.select(this.parentNode as Element).datum() as GraphNode;
           return `url(#glow-${NODE_COLORS[d.entity_type] ? d.entity_type : "default"})`;
@@ -310,6 +326,10 @@ export function GraphExplorer() {
         .attr("fill-opacity", 0.85);
       node.selectAll(".node-ring")
         .transition().duration(300)
+        .attr("r", function () {
+          const d = d3.select(this.parentNode as Element).datum() as GraphNode;
+          return d.radius + 3;
+        })
         .attr("stroke-opacity", 0);
 
       // Restore edges
@@ -447,25 +467,23 @@ export function GraphExplorer() {
 
           {/* Type filters */}
           <div className="flex gap-1.5 flex-wrap mt-3">
-            {TYPES.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => setFilter(t.value)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition-all duration-200 ${
-                  filter === t.value
-                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                    : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                }`}
-              >
-                {t.value && (
-                  <span
-                    className="inline-block w-2 h-2 rounded-full mr-1.5"
-                    style={{ backgroundColor: NODE_COLORS[t.value]?.fill ?? DEFAULT_COLORS.fill }}
-                  />
-                )}
-                {t.label}
-              </button>
-            ))}
+            {TYPES.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setFilter(t.value)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all duration-200 flex items-center gap-1.5 ${
+                    filter === t.value
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                      : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
+                >
+                  {Icon && <Icon size={12} style={{ color: filter === t.value ? undefined : NODE_COLORS[t.value]?.fill }} />}
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -490,12 +508,16 @@ export function GraphExplorer() {
           {/* Legend overlay */}
           {nodeCount > 0 && (
             <div className="absolute bottom-4 left-4 flex gap-3 rounded-lg bg-background/70 backdrop-blur-sm border border-border/50 px-3 py-2">
-              {Object.entries(NODE_COLORS).filter(([k]) => k !== "topic").map(([type, colors]) => (
-                <div key={type} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors.fill, boxShadow: `0 0 6px ${colors.glow}` }} />
-                  {type}
-                </div>
-              ))}
+              {TYPES.filter((t) => t.value).map((t) => {
+                const Icon = t.icon;
+                const colors = NODE_COLORS[t.value] ?? DEFAULT_COLORS;
+                return (
+                  <div key={t.value} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    {Icon && <Icon size={10} style={{ color: colors.fill }} />}
+                    {t.label}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
