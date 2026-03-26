@@ -321,9 +321,29 @@ export const commands = {
 
 // ── Events ──
 
+export interface EmbeddingProgress {
+  stage: string;
+  current: number;
+  total: number;
+  message: string;
+}
+
+export interface AnalysisProgress {
+  stage: string;
+  message: string;
+}
+
 export const events = {
   onImportProgress: (
     cb: (progress: ImportProgress) => void,
   ): Promise<UnlistenFn> =>
     listen<ImportProgress>("import-progress", (e) => cb(e.payload)),
+  onEmbeddingProgress: (
+    cb: (progress: EmbeddingProgress) => void,
+  ): Promise<UnlistenFn> =>
+    listen<EmbeddingProgress>("embedding-progress", (e) => cb(e.payload)),
+  onAnalysisProgress: (
+    cb: (progress: AnalysisProgress) => void,
+  ): Promise<UnlistenFn> =>
+    listen<AnalysisProgress>("analysis-progress", (e) => cb(e.payload)),
 };

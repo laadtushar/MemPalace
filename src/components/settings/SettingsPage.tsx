@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   commands,
+  events,
   type OllamaStatus,
   type AppStats,
   type LlmConfig,
@@ -8,6 +9,7 @@ import {
   type UsageLogEntry,
   type PromptVersionInfo,
   type LogEntry,
+  type EmbeddingProgress,
 } from "@/lib/tauri";
 import {
   Cpu,
@@ -58,7 +60,16 @@ export function SettingsPage() {
   const [showRecentLogs, setShowRecentLogs] = useState(false);
   const [recentLogs, setRecentLogs] = useState<LogEntry[]>([]);
   const [recentLogsLoading, setRecentLogsLoading] = useState(false);
+  const [embedProgress, setEmbedProgress] = useState<EmbeddingProgress | null>(null);
+  const [embedRunning, setEmbedRunning] = useState(false);
   const setView = useAppStore((s) => s.setView);
+
+  // Listen for embedding progress events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    events.onEmbeddingProgress((p) => setEmbedProgress(p)).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
 
   const testConnection = async () => {
     setTesting(true);
@@ -552,26 +563,49 @@ export function SettingsPage() {
                 </div>
               )}
               {appStats.total_documents > 0 && (
-                <div className="pt-2 border-t border-border/50">
+                <div className="pt-2 border-t border-border/50 space-y-2">
                   <button
                     onClick={() => {
-                      setSaveMsg("Generating embeddings... (this runs in background)");
+                      if (embedRunning) return;
+                      setEmbedRunning(true);
+                      setEmbedProgress(null);
                       setSaveErr(null);
-                      // Fire and forget — don't await, let it run in background
                       commands.generateEmbeddings().then((r) => {
-                        setSaveMsg(`Embedded ${r.embeddings_generated} chunks (${r.errors.length} errors)`);
+                        setEmbedRunning(false);
+                        setEmbedProgress({ stage: "complete", current: r.embeddings_generated, total: r.chunks_processed, message: `Done! ${r.embeddings_generated} embeddings generated` });
                       }).catch((e) => {
+                        setEmbedRunning(false);
                         setSaveErr(String(e));
-                        setSaveMsg(null);
                       });
                     }}
-                    className="rounded-md bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80"
+                    disabled={embedRunning}
+                    className="rounded-md bg-secondary px-3 py-1.5 text-sm hover:bg-secondary/80 disabled:opacity-50"
                   >
-                    Generate Embeddings
+                    {embedRunning ? "Generating..." : "Generate Embeddings"}
                   </button>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Required for semantic search and RAG. Uses the configured embedding provider.
-                  </p>
+                  {embedProgress && (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{embedProgress.message}</span>
+                        {embedProgress.total > 0 && (
+                          <span className="tabular-nums">{embedProgress.current}/{embedProgress.total}</span>
+                        )}
+                      </div>
+                      {embedProgress.total > 0 && (
+                        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all duration-300"
+                            style={{ width: `${(embedProgress.current / embedProgress.total) * 100}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!embedProgress && !embedRunning && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Required for semantic search and RAG. Uses the configured embedding provider.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

@@ -1,18 +1,29 @@
 use rusqlite::params;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::app_state::AppState;
 use crate::domain::models::common::TimeGranularity;
 use crate::pipeline::analysis::orchestrator::{self, AnalysisConfig, AnalysisResult};
 use crate::pipeline::pii_detector::PiiDetector;
 
+#[derive(Clone, serde::Serialize)]
+struct AnalysisProgress {
+    stage: String,
+    message: String,
+}
+
 #[tauri::command]
 pub fn run_analysis(
     granularity: Option<String>,
+    app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AnalysisResult, String> {
     tracing::info!(granularity = ?granularity, "Starting analysis");
     let start = std::time::Instant::now();
+
+    let _ = app_handle.emit("analysis-progress", AnalysisProgress {
+        stage: "starting".into(), message: "Starting analysis...".into(),
+    });
 
     let llm = state
         .llm_provider

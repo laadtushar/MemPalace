@@ -320,18 +320,18 @@ export function GraphExplorer() {
       node.selectAll(".node-circle")
         .transition().duration(300)
         .attr("r", function () {
-          const d = d3.select(this.parentNode as Element).datum() as GraphNode;
+          const d = d3.select((this as SVGElement).parentNode as Element).datum() as GraphNode;
           return d.radius;
         })
         .attr("filter", function () {
-          const d = d3.select(this.parentNode as Element).datum() as GraphNode;
+          const d = d3.select((this as SVGElement).parentNode as Element).datum() as GraphNode;
           return `url(#glow-${NODE_COLORS[d.entity_type] ? d.entity_type : "default"})`;
         })
         .attr("fill-opacity", 0.85);
       node.selectAll(".node-ring")
         .transition().duration(300)
         .attr("r", function () {
-          const d = d3.select(this.parentNode as Element).datum() as GraphNode;
+          const d = d3.select((this as SVGElement).parentNode as Element).datum() as GraphNode;
           return d.radius + 3;
         })
         .attr("stroke-opacity", 0);
@@ -407,7 +407,7 @@ export function GraphExplorer() {
     });
     simulation.alpha(1).restart();
 
-    return () => simulation.stop();
+    return () => { simulation.stop(); };
   }, [graphData]);
 
   const handleZoomIn = () => {

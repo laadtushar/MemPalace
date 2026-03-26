@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::app_state::AppState;
 
@@ -12,9 +12,31 @@ pub struct EmbeddingResult {
     pub errors: Vec<String>,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct EmbeddingProgress {
+    stage: String,
+    current: usize,
+    total: usize,
+    message: String,
+}
+
+fn emit_progress(app_handle: &AppHandle, stage: &str, current: usize, total: usize, message: &str) {
+    let _ = app_handle.emit(
+        "embedding-progress",
+        EmbeddingProgress {
+            stage: stage.to_string(),
+            current,
+            total,
+            message: message.to_string(),
+        },
+    );
+}
+
 /// Generate embeddings for all chunks that don't have them yet.
+/// Emits "embedding-progress" events so the frontend can show a progress bar.
 #[tauri::command]
 pub fn generate_embeddings(
+    app_handle: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<EmbeddingResult, String> {
     let provider = state
@@ -22,13 +44,15 @@ pub fn generate_embeddings(
         .read()
         .map_err(|e| format!("Lock error: {}", e))?;
 
-    // Get all document IDs
+    emit_progress(&app_handle, "scanning", 0, 0, "Scanning documents for chunks...");
+
     let months = state
         .timeline_store
         .get_document_count_by_month()
         .map_err(|e| e.to_string())?;
 
     if months.is_empty() {
+        emit_progress(&app_handle, "complete", 0, 0, "No documents found");
         return Ok(EmbeddingResult {
             chunks_processed: 0,
             embeddings_generated: 0,
@@ -60,16 +84,25 @@ pub fn generate_embeddings(
     }
 
     let total = all_chunks.len();
+    emit_progress(&app_handle, "embedding", 0, total, &format!("Found {} chunks to embed", total));
+    tracing::info!(total_chunks = total, "Starting embedding generation");
 
-    // Check which chunks already have embeddings by attempting a search
-    // (Simple heuristic: try to embed all, vector store upsert is idempotent)
     let mut generated = 0;
     let mut errors = Vec::new();
     let batch_size = 10;
 
-    for batch in all_chunks.chunks(batch_size) {
+    for (batch_idx, batch) in all_chunks.chunks(batch_size).enumerate() {
         let texts: Vec<String> = batch.iter().map(|(_, t)| t.clone()).collect();
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
+
+        let progress = (batch_idx * batch_size).min(total);
+        emit_progress(
+            &app_handle,
+            "embedding",
+            progress,
+            total,
+            &format!("Embedding batch {}/{}...", batch_idx + 1, (total + batch_size - 1) / batch_size),
+        );
 
         match tauri::async_runtime::block_on(provider.embed_batch(&texts)) {
             Ok(embeddings) => {
@@ -86,11 +119,15 @@ pub fn generate_embeddings(
                 }
             }
             Err(e) => {
-                errors.push(format!("Embedding failed: {}. Is Ollama running with nomic-embed-text?", e));
-                break; // Stop on first failure — Ollama is likely offline
+                errors.push(format!("Embedding failed: {}", e));
+                tracing::error!(error = %e, "Embedding batch failed");
+                break;
             }
         }
     }
+
+    emit_progress(&app_handle, "complete", total, total, &format!("Done! {} embeddings generated", generated));
+    tracing::info!(generated = generated, errors = errors.len(), "Embedding generation complete");
 
     Ok(EmbeddingResult {
         chunks_processed: total,
