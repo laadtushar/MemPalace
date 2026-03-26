@@ -25,32 +25,38 @@ const scaleIn = {
   visible: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: "easeOut" } },
 };
 
-// Inline SVG logo component matching the brand kit
+// Inline SVG logo — simplified for small, detailed for large
 function Logo({ size = 32 }: { size?: number }) {
+  const id = `logo-${size}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="nav-bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+        <linearGradient id={id} x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
           <stop offset="0%" stopColor="#6d28d9"/><stop offset="50%" stopColor="#4f46e5"/><stop offset="100%" stopColor="#0ea5e9"/>
         </linearGradient>
       </defs>
-      <rect width="512" height="512" rx="112" fill="url(#nav-bg)"/>
-      <line x1="256" y1="248" x2="176" y2="176" stroke="white" strokeWidth="3" opacity="0.5"/>
-      <line x1="256" y1="248" x2="344" y2="176" stroke="white" strokeWidth="3" opacity="0.5"/>
-      <line x1="256" y1="272" x2="152" y2="320" stroke="white" strokeWidth="2.5" opacity="0.4"/>
-      <line x1="256" y1="272" x2="360" y2="320" stroke="white" strokeWidth="2.5" opacity="0.4"/>
-      <line x1="256" y1="284" x2="216" y2="384" stroke="white" strokeWidth="2" opacity="0.35"/>
-      <line x1="256" y1="284" x2="296" y2="384" stroke="white" strokeWidth="2" opacity="0.35"/>
-      <line x1="256" y1="232" x2="256" y2="144" stroke="white" strokeWidth="3" opacity="0.45"/>
-      <circle cx="256" cy="260" r="32" fill="white"/>
-      <circle cx="256" cy="144" r="16" fill="white" opacity="0.9"/>
-      <circle cx="176" cy="176" r="14" fill="white" opacity="0.85"/>
-      <circle cx="344" cy="176" r="14" fill="white" opacity="0.85"/>
-      <circle cx="152" cy="320" r="12" fill="white" opacity="0.75"/>
-      <circle cx="360" cy="320" r="12" fill="white" opacity="0.75"/>
-      <circle cx="216" cy="384" r="11" fill="white" opacity="0.7"/>
-      <circle cx="296" cy="384" r="11" fill="white" opacity="0.7"/>
-      <text x="256" y="273" textAnchor="middle" fontFamily="system-ui,sans-serif" fontWeight="900" fontSize="34" fill="#4f46e5">M</text>
+      <rect width="100" height="100" rx="22" fill={`url(#${id})`}/>
+      {/* Connections */}
+      <line x1="50" y1="45" x2="30" y2="30" stroke="white" strokeWidth="2.5" opacity="0.6"/>
+      <line x1="50" y1="45" x2="70" y2="30" stroke="white" strokeWidth="2.5" opacity="0.6"/>
+      <line x1="50" y1="55" x2="28" y2="65" stroke="white" strokeWidth="2" opacity="0.5"/>
+      <line x1="50" y1="55" x2="72" y2="65" stroke="white" strokeWidth="2" opacity="0.5"/>
+      <line x1="50" y1="58" x2="40" y2="78" stroke="white" strokeWidth="2" opacity="0.45"/>
+      <line x1="50" y1="58" x2="60" y2="78" stroke="white" strokeWidth="2" opacity="0.45"/>
+      <line x1="50" y1="42" x2="50" y2="22" stroke="white" strokeWidth="2.5" opacity="0.55"/>
+      {/* Nodes */}
+      <circle cx="50" cy="50" r="9" fill="white"/>
+      <circle cx="50" cy="22" r="5" fill="white" opacity="0.9"/>
+      <circle cx="30" cy="30" r="4.5" fill="white" opacity="0.85"/>
+      <circle cx="70" cy="30" r="4.5" fill="white" opacity="0.85"/>
+      <circle cx="28" cy="65" r="4" fill="white" opacity="0.75"/>
+      <circle cx="72" cy="65" r="4" fill="white" opacity="0.75"/>
+      <circle cx="40" cy="78" r="3.5" fill="white" opacity="0.7"/>
+      <circle cx="60" cy="78" r="3.5" fill="white" opacity="0.7"/>
+      {/* Pulse ring */}
+      <circle cx="50" cy="50" r="13" stroke="white" strokeWidth="1" fill="none" opacity="0.2"/>
+      {/* M */}
+      <text x="50" y="54" textAnchor="middle" fontFamily="system-ui,sans-serif" fontWeight="900" fontSize="10" fill="#4f46e5">M</text>
     </svg>
   );
 }
@@ -143,8 +149,9 @@ export default function Home() {
           </motion.div>
 
           {/* Logo + Heading */}
-          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, duration: 0.6 }}>
-            <Logo size={64} />
+          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, duration: 0.6 }}
+            className="flex justify-center">
+            <Logo size={80} />
           </motion.div>
 
           <motion.h1 initial={{ opacity: 0, y: 25 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.6 }}

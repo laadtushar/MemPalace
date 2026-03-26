@@ -5,6 +5,10 @@ export const metadata: Metadata = {
   title: "MemryLab — Your Memory, Visualized",
   description:
     "A privacy-first desktop app that turns your digital footprint into a searchable, visual timeline of personal evolution.",
+  icons: {
+    icon: "/favicon.svg",
+    apple: "/logo-icon.svg",
+  },
   openGraph: {
     title: "MemryLab",
     description:
