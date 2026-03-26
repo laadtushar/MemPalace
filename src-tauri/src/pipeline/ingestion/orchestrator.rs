@@ -99,6 +99,7 @@ impl<'a> IngestionOrchestrator<'a> {
         let mut embeddings_generated = 0;
         let total_parsed = documents.len();
         let mut documents = documents;
+        tracing::info!(total_documents = total_parsed, "Ingestion pipeline starting");
 
         // Stage 2: Dedup
         report_progress(on_progress, "dedup", 0, total_parsed, "Checking for duplicates...");
@@ -146,6 +147,7 @@ impl<'a> IngestionOrchestrator<'a> {
 
         report_progress(on_progress, "storing", total_docs, total_docs,
             &format!("Stored {} documents, {} chunks", total_docs, chunks_created));
+        tracing::info!(documents = total_docs, chunks = chunks_created, "Store stage complete");
 
         // Stage 5: Generate embeddings + store in vector store
         if let (Some(provider), Some(vector_store)) = (&self.embedding_provider, &self.vector_store) {

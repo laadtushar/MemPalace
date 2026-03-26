@@ -93,6 +93,7 @@ pub fn save_llm_config(
     config: LlmConfig,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    tracing::info!(provider = %config.active_provider, "Saving LLM configuration");
     let cs = &state.config_store;
 
     cs.set("llm.active_provider", &config.active_provider).map_err(|e| e.to_string())?;
@@ -212,6 +213,7 @@ pub fn save_llm_config(
         .map_err(|e| format!("Lock error: {}", e))?;
     *embed = new_embed;
 
+    tracing::info!(provider = %config.active_provider, "LLM provider switched successfully");
     Ok(())
 }
 

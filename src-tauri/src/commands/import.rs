@@ -25,6 +25,7 @@ fn run_import(
     adapter: &dyn SourceAdapter,
     path: &Path,
 ) -> Result<ImportSummary, String> {
+    tracing::info!(adapter = adapter.name(), path = %path.display(), "Starting import");
     let handle = app_handle.clone();
     let progress_cb: Box<dyn Fn(&str, usize, usize, &str) + Send> =
         Box::new(move |stage, current, total, message| {
@@ -66,7 +67,10 @@ fn run_import(
         },
     );
 
+    tracing::info!(documents = doc_count, adapter = adapter.name(), "Parsing complete");
+
     if doc_count == 0 {
+        tracing::warn!(adapter = adapter.name(), "No documents found during import");
         return Ok(ImportSummary {
             documents_imported: 0,
             chunks_created: 0,
@@ -94,10 +98,27 @@ fn run_import(
     .with_vector_store(state.vector_store.as_ref())
     .with_embedding_provider(embed_provider);
 
-    tauri::async_runtime::block_on(
+    let result = tauri::async_runtime::block_on(
         orchestrator.ingest_documents(documents, Some(&progress_cb)),
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| {
+        tracing::error!(error = %e, "Import failed");
+        e.to_string()
+    });
+
+    if let Ok(ref summary) = result {
+        tracing::info!(
+            documents = summary.documents_imported,
+            chunks = summary.chunks_created,
+            embeddings = summary.embeddings_generated,
+            duplicates_skipped = summary.duplicates_skipped,
+            errors = summary.errors.len(),
+            duration_ms = summary.duration_ms,
+            "Import complete"
+        );
+    }
+
+    result
 }
 
 #[tauri::command]

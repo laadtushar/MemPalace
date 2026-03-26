@@ -10,6 +10,7 @@ import { MemoryBrowser } from "@/components/memory/MemoryBrowser";
 import { EntityExplorer } from "@/components/entities/EntityExplorer";
 import { GraphExplorer } from "@/components/graph/GraphExplorer";
 import { EvolutionExplorer } from "@/components/evolution/EvolutionExplorer";
+import { LogsView } from "@/components/logs/LogsView";
 import { SettingsPage } from "@/components/settings/SettingsPage";
 
 const viewComponents: Record<string, { component: React.ReactNode; label: string }> = {
@@ -22,6 +23,7 @@ const viewComponents: Record<string, { component: React.ReactNode; label: string
   entities: { component: <EntityExplorer />, label: "Entities" },
   graph: { component: <GraphExplorer />, label: "Graph" },
   evolution: { component: <EvolutionExplorer />, label: "Evolution" },
+  logs: { component: <LogsView />, label: "Logs" },
   settings: { component: <SettingsPage />, label: "Settings" },
 };
 

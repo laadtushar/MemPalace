@@ -21,6 +21,7 @@ pub fn keyword_search(
     state: State<'_, AppState>,
 ) -> Result<Vec<SearchResult>, String> {
     let k = top_k.unwrap_or(10);
+    tracing::debug!(query_len = query.len(), top_k = k, "Keyword search");
     let fts_results = state
         .page_index
         .search(&query, k)
@@ -51,6 +52,7 @@ pub fn keyword_search(
         }
     }
 
+    tracing::debug!(results = results.len(), "Keyword search complete");
     Ok(results)
 }
 
@@ -61,6 +63,7 @@ pub fn semantic_search(
     state: State<'_, AppState>,
 ) -> Result<Vec<SearchResult>, String> {
     let k = top_k.unwrap_or(10);
+    tracing::debug!(query_len = query.len(), top_k = k, "Semantic search");
 
     // Embed the query using the embedding provider
     let provider = state
@@ -103,6 +106,7 @@ pub fn semantic_search(
         }
     }
 
+    tracing::debug!(results = results.len(), "Semantic search complete");
     Ok(results)
 }
 

@@ -48,8 +48,12 @@ tokio-util = { version = "0.7", features = ["full"] }
 async-trait = "0.1"
 
 # Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"
+tracing-log = "0.2"
 log = "0.4"
-env_logger = "0.11"
+dirs = "6"
 zip = "2"
 
 # OS keychain for secure secret storage

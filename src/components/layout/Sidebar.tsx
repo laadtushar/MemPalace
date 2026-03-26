@@ -8,6 +8,7 @@ import {
   Network,
   Share2,
   TrendingUp,
+  ScrollText,
   Settings,
   Sun,
   Moon,
@@ -24,6 +25,7 @@ const navItems: { view: View; label: string; icon: React.ReactNode }[] = [
   { view: "memory", label: "Memory", icon: <Brain size={20} /> },
   { view: "entities", label: "Entities", icon: <Network size={20} /> },
   { view: "graph", label: "Graph", icon: <Share2 size={20} /> },
+  { view: "logs", label: "Logs", icon: <ScrollText size={20} /> },
   { view: "settings", label: "Settings", icon: <Settings size={20} /> },
 ];
 

@@ -50,7 +50,9 @@ impl SqliteConnection {
         };
 
         // Run migrations
+        tracing::debug!("Running database migrations");
         db.with_conn(|conn| migrations::run_migrations(conn))?;
+        tracing::debug!("Database migrations complete");
 
         Ok(db)
     }

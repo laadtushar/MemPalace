@@ -206,6 +206,13 @@ export interface PromptVersionInfo {
   created_at: string;
 }
 
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  target: string;
+  message: string;
+}
+
 // ── Commands ──
 
 export const commands = {
@@ -288,6 +295,11 @@ export const commands = {
   getAppStats: () => invoke<AppStats>("get_app_stats"),
   getUsageLog: (limit?: number) =>
     invoke<UsageLogEntry[]>("get_usage_log", { limit }),
+
+  // Logs
+  getAppLogs: (limit?: number, levelFilter?: string) =>
+    invoke<LogEntry[]>("get_app_logs", { limit, levelFilter }),
+  getLogPath: () => invoke<string>("get_log_path"),
 
   // Boundaries
   listBoundaries: () => invoke<TimeBoundary[]>("list_boundaries"),

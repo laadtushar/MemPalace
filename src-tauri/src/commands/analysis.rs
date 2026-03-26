@@ -11,6 +11,9 @@ pub fn run_analysis(
     granularity: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<AnalysisResult, String> {
+    tracing::info!(granularity = ?granularity, "Starting analysis");
+    let start = std::time::Instant::now();
+
     let llm = state
         .llm_provider
         .read()
@@ -20,7 +23,7 @@ pub fn run_analysis(
         granularity: TimeGranularity::from_str_opt(granularity.as_deref()),
     };
 
-    tauri::async_runtime::block_on(orchestrator::run_analysis(
+    let result = tauri::async_runtime::block_on(orchestrator::run_analysis(
         state.document_store.as_ref(),
         state.timeline_store.as_ref(),
         state.memory_store.as_ref(),
@@ -28,7 +31,26 @@ pub fn run_analysis(
         llm.as_ref(),
         Some(config),
     ))
-    .map_err(|e| e.to_string())
+    .map_err(|e| {
+        tracing::error!(error = %e, "Analysis failed");
+        e.to_string()
+    });
+
+    if let Ok(ref r) = result {
+        tracing::info!(
+            themes = r.themes_extracted,
+            beliefs = r.beliefs_extracted,
+            sentiments = r.sentiments_classified,
+            entities = r.entities_extracted,
+            insights = r.insights_generated,
+            contradictions = r.contradictions_found,
+            narratives = r.narratives_generated,
+            duration_ms = start.elapsed().as_millis() as u64,
+            "Analysis complete"
+        );
+    }
+
+    result
 }
 
 #[derive(serde::Serialize)]

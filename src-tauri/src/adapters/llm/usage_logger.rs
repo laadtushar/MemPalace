@@ -27,6 +27,15 @@ impl UsageLoggingProvider {
         purpose: &str,
         duration_ms: i64,
     ) {
+        tracing::info!(
+            provider = provider,
+            model = model,
+            prompt_tokens = prompt_tokens,
+            completion_tokens = completion_tokens,
+            purpose = purpose,
+            duration_ms = duration_ms,
+            "LLM call completed"
+        );
         let id = uuid::Uuid::new_v4().to_string();
         let _ = self.db.with_conn(|conn| {
             conn.execute(

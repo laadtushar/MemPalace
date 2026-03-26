@@ -7,6 +7,7 @@ import {
   type ProviderPreset,
   type UsageLogEntry,
   type PromptVersionInfo,
+  type LogEntry,
 } from "@/lib/tauri";
 import {
   Cpu,
@@ -29,7 +30,9 @@ import {
   FileText,
   Edit3,
   Check,
+  ScrollText,
 } from "lucide-react";
+import { useAppStore } from "@/stores/app-store";
 
 export function SettingsPage() {
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
@@ -52,6 +55,10 @@ export function SettingsPage() {
   const [editTemplate, setEditTemplate] = useState("");
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptMsg, setPromptMsg] = useState<string | null>(null);
+  const [showRecentLogs, setShowRecentLogs] = useState(false);
+  const [recentLogs, setRecentLogs] = useState<LogEntry[]>([]);
+  const [recentLogsLoading, setRecentLogsLoading] = useState(false);
+  const setView = useAppStore((s) => s.setView);
 
   const testConnection = async () => {
     setTesting(true);
@@ -915,6 +922,78 @@ export function SettingsPage() {
                 </div>
               </>
             )}
+          </div>
+        )}
+      </section>
+
+      {/* ── Recent Logs ── */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-medium flex items-center gap-2">
+          <ScrollText size={20} className="text-primary" /> Application Logs
+        </h2>
+        <button
+          onClick={async () => {
+            const next = !showRecentLogs;
+            setShowRecentLogs(next);
+            if (next && recentLogs.length === 0) {
+              setRecentLogsLoading(true);
+              try {
+                const entries = await commands.getAppLogs(10);
+                setRecentLogs(entries);
+              } catch {
+                /* empty */
+              }
+              setRecentLogsLoading(false);
+            }
+          }}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {showRecentLogs ? (
+            <ChevronUp size={12} />
+          ) : (
+            <ChevronDown size={12} />
+          )}
+          {showRecentLogs ? "Hide" : "Show"} recent application logs
+        </button>
+
+        {showRecentLogs && (
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+            {recentLogsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading...</p>
+            ) : recentLogs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No log entries yet.
+              </p>
+            ) : (
+              <div className="space-y-1 font-mono text-[11px]">
+                {recentLogs.map((entry, i) => (
+                  <div key={i} className="flex gap-2 py-0.5">
+                    <span
+                      className={`shrink-0 font-semibold ${
+                        entry.level === "ERROR"
+                          ? "text-red-400"
+                          : entry.level === "WARN"
+                            ? "text-yellow-400"
+                            : entry.level === "INFO"
+                              ? "text-blue-400"
+                              : "text-zinc-400"
+                      }`}
+                    >
+                      {entry.level.padEnd(5)}
+                    </span>
+                    <span className="text-foreground break-all">
+                      {entry.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setView("logs")}
+              className="flex items-center gap-1.5 rounded-md bg-secondary px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ScrollText size={12} /> View all logs
+            </button>
           </div>
         )}
       </section>

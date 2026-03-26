@@ -10,6 +10,7 @@ export type View =
   | "entities"
   | "graph"
   | "evolution"
+  | "logs"
   | "settings";
 
 export type Theme = "dark" | "light";

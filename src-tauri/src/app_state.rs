@@ -53,6 +53,7 @@ impl AppState {
     pub fn new_with_passphrase(data_dir: PathBuf, passphrase: &str) -> Result<Self, AppError> {
         std::fs::create_dir_all(&data_dir)?;
         let db_path = data_dir.join("memory_palace.db");
+        tracing::info!(db_path = %db_path.display(), encrypted = !passphrase.is_empty(), "Opening database");
         let db = if passphrase.is_empty() {
             Arc::new(SqliteConnection::open(&db_path)?)
         } else {
@@ -62,6 +63,8 @@ impl AppState {
         let vector_store = SqliteVectorStore::new(db.clone())?;
         let config_store = Arc::new(SqliteConfigStore::new(db.clone()));
         let kc = Arc::new(KeychainAdapter::new());
+
+        tracing::info!(keychain_available = kc.is_available(), "Keychain status");
 
         // Migrate plaintext API keys from config store to OS keychain (one-time)
         if kc.is_available() {
@@ -138,6 +141,12 @@ impl AppState {
         if let Err(e) = prompt_store.seed_defaults() {
             log::warn!("Failed to seed default prompts: {}", e);
         }
+
+        tracing::info!(
+            active_provider = %active_provider,
+            ollama_url = %ollama_url,
+            "AppState initialized"
+        );
 
         Ok(Self {
             document_store: Box::new(SqliteDocumentStore::new(db.clone())),
