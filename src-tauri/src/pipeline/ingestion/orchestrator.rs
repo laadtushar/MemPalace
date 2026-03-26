@@ -79,15 +79,26 @@ impl<'a> IngestionOrchestrator<'a> {
         path: &std::path::Path,
         on_progress: Option<&ProgressCallback>,
     ) -> Result<ImportSummary, AppError> {
+        // Stage 1: Parse
+        report_progress(on_progress, "parsing", 0, 0, &format!("Parsing {} files...", adapter.name()));
+        let documents = adapter.parse(path)?;
+        let total_parsed = documents.len();
+        report_progress(on_progress, "parsing", total_parsed, total_parsed, &format!("Parsed {} documents", total_parsed));
+
+        self.ingest_documents(documents, on_progress).await
+    }
+
+    /// Run the ingestion pipeline on pre-parsed documents (dedup → normalize → chunk → store → embed).
+    pub async fn ingest_documents(
+        &self,
+        documents: Vec<crate::domain::models::document::Document>,
+        on_progress: Option<&ProgressCallback>,
+    ) -> Result<ImportSummary, AppError> {
         let start = std::time::Instant::now();
         let mut errors = Vec::new();
         let mut embeddings_generated = 0;
-
-        // Stage 1: Parse
-        report_progress(on_progress, "parsing", 0, 0, &format!("Parsing {} files...", adapter.name()));
-        let mut documents = adapter.parse(path)?;
         let total_parsed = documents.len();
-        report_progress(on_progress, "parsing", total_parsed, total_parsed, &format!("Parsed {} documents", total_parsed));
+        let mut documents = documents;
 
         // Stage 2: Dedup
         report_progress(on_progress, "dedup", 0, total_parsed, "Checking for duplicates...");

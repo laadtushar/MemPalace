@@ -39,6 +39,44 @@ fn run_import(
             );
         });
 
+    // Report that parsing is starting
+    let parse_handle = app_handle.clone();
+    let adapter_name = adapter.name().to_string();
+    let _ = parse_handle.emit(
+        "import-progress",
+        ImportProgress {
+            stage: "parsing".to_string(),
+            current: 0,
+            total: 0,
+            message: format!("Scanning {} files...", adapter_name),
+        },
+    );
+
+    // Parse synchronously (adapters walk the filesystem)
+    let documents = adapter.parse(path).map_err(|e| e.to_string())?;
+    let doc_count = documents.len();
+
+    let _ = app_handle.emit(
+        "import-progress",
+        ImportProgress {
+            stage: "parsing".to_string(),
+            current: doc_count,
+            total: doc_count,
+            message: format!("Found {} documents from {}", doc_count, adapter_name),
+        },
+    );
+
+    if doc_count == 0 {
+        return Ok(ImportSummary {
+            documents_imported: 0,
+            chunks_created: 0,
+            embeddings_generated: 0,
+            duplicates_skipped: 0,
+            errors: vec![],
+            duration_ms: 0,
+        });
+    }
+
     // Always wire embedding provider — if Ollama isn't running, embedding errors are
     // collected in ImportSummary.errors but don't block the import.
     let embed_provider: std::sync::Arc<dyn crate::domain::ports::embedding_provider::IEmbeddingProvider> =
@@ -57,7 +95,7 @@ fn run_import(
     .with_embedding_provider(embed_provider);
 
     tauri::async_runtime::block_on(
-        orchestrator.ingest(adapter, path, Some(&progress_cb)),
+        orchestrator.ingest_documents(documents, Some(&progress_cb)),
     )
     .map_err(|e| e.to_string())
 }
