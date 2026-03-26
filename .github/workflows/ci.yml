@@ -4,8 +4,16 @@ name: CI
 on:
   push:
     branches: [master, main]
+    paths-ignore:
+      - 'website/**'
+      - 'docs/**'
+      - '*.md'
   pull_request:
     branches: [master, main]
+    paths-ignore:
+      - 'website/**'
+      - 'docs/**'
+      - '*.md'
 
 env:
   CARGO_TERM_COLOR: always
