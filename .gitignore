@@ -43,3 +43,6 @@ app-icon.png
 website/.next/
 website/out/
 website/node_modules/
+
+.vercel
+.env*.local

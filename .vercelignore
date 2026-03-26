@@ -1,0 +1,8 @@
+src-tauri/
+dist/
+node_modules/
+target/
+*.db
+*.mp4
+docs/
+.github/
