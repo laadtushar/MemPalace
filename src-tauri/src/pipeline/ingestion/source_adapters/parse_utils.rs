@@ -7,9 +7,11 @@ use crate::domain::models::document::Document;
 
 /// Strip HTML tags and decode common entities to plain text.
 pub fn html_to_text(html: &str) -> String {
-    // Remove script/style blocks
-    let re_script = regex::Regex::new(r"(?is)<(script|style)[^>]*>.*?</\1>").unwrap();
+    // Remove script/style blocks (two separate patterns — regex crate doesn't support backreferences)
+    let re_script = regex::Regex::new(r"(?is)<script[^>]*>.*?</script>").unwrap();
     let text = re_script.replace_all(html, "");
+    let re_style = regex::Regex::new(r"(?is)<style[^>]*>.*?</style>").unwrap();
+    let text = re_style.replace_all(&text, "");
     // Remove tags
     let re_tags = regex::Regex::new(r"<[^>]+>").unwrap();
     let text = re_tags.replace_all(&text, " ");
