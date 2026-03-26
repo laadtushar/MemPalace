@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { commands, type MemoryFactResponse, type PiiFlaggedFact } from "@/lib/tauri";
+import { commands, type MemoryFactResponse } from "@/lib/tauri";
 import { Brain, Trash2, Filter, Loader2, Download, Shield, ShieldAlert } from "lucide-react";
 
 const CATEGORIES = [
