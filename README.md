@@ -231,51 +231,100 @@ Any OpenAI-compatible endpoint can also be configured manually with a custom bas
 
 MemryLab follows a strict **hexagonal (ports and adapters) architecture**. The core domain has zero knowledge of specific databases, LLM providers, or UI frameworks.
 
+```mermaid
+graph TB
+    subgraph Frontend["React 19 Frontend"]
+        direction LR
+        V1[Timeline] --- V2[Search] --- V3[Ask/Chat] --- V4[Insights]
+        V5[Evolution] --- V6[Import] --- V7[Memory] --- V8[Entities]
+        V9[Graph] --- V10[Activity] --- V11[Logs] --- V12[Settings]
+    end
+
+    Frontend -->|"Tauri IPC (42 commands)"| Commands
+    Frontend -->|"Events (progress)"| Commands
+
+    subgraph Backend["Rust Backend"]
+        Commands[Command Handlers]
+
+        subgraph Domain["Domain (Pure Logic)"]
+            Models["Models: Document, Chunk, Entity\nTheme, Memory, Insight, Narrative"]
+            Ports["Ports: IDocumentStore, IVectorStore\nIGraphStore, ILlmProvider\nIEmbeddingProvider, IMemoryStore\nIPageIndex, ITimelineStore"]
+        end
+
+        subgraph Adapters["Adapters"]
+            SQLite["SQLite Adapters\n(7 stores + FTS5)"]
+            Ollama["Ollama\n(Local LLM + Embed)"]
+            OpenAI["OpenAI-Compat\n(8 cloud providers)"]
+            Claude["Claude API"]
+            Keychain["OS Keychain"]
+        end
+
+        subgraph Pipelines["Pipelines"]
+            Ingest["Ingestion: Detect → Parse → Dedup\n→ Normalize → Chunk → Embed → Store"]
+            Analysis["Analysis: Themes → Sentiment → Beliefs\n→ Entities → Insights → Contradictions\n→ Evolution → Narratives"]
+            RAG["RAG: Classify → Retrieve → RRF Fuse\n→ Memory Augment → LLM Generate"]
+        end
+
+        Commands --> Domain
+        Domain --> Adapters
+        Commands --> Pipelines
+        Pipelines --> Domain
+    end
+
+    style Frontend fill:#1e1b4b,stroke:#7c3aed,color:#e9d5ff
+    style Domain fill:#172554,stroke:#3b82f6,color:#bfdbfe
+    style Adapters fill:#1c1917,stroke:#a1a1aa,color:#e4e4e7
+    style Pipelines fill:#052e16,stroke:#22c55e,color:#bbf7d0
 ```
-+---------------------------------------------------------------+
-|                       React 19 Frontend                       |
-|  Timeline | Search | Ask | Insights | Evolution | Import      |
-|  Memory   | Entities | Graph | Settings                      |
-+-------------------------------+-------------------------------+
-|     Tauri IPC Commands (30+)  |    Events (import progress)   |
-+-------------------------------+-------------------------------+
-|                                                               |
-|   +-------------------------------------------------------+   |
-|   |                  Domain (Pure Logic)                   |   |
-|   |  Models: Document, Chunk, Entity, Theme, Memory,      |   |
-|   |          Insight, Narrative, Contradiction, Sentiment  |   |
-|   |  Ports:  IDocumentStore, IVectorStore, IGraphStore,    |   |
-|   |          ILlmProvider, IEmbeddingProvider, IMemoryStore|   |
-|   |          IPageIndex, ITimelineStore, IAnalysisStage    |   |
-|   +-------------------------------------------------------+   |
-|          ^               ^               ^                    |
-|   +------+------+  +----+----+  +-------+--------+           |
-|   |   SQLite    |  | Ollama  |  | OpenAI-Compat  |           |
-|   |  Adapters   |  | Adapter |  |    Adapter     |           |
-|   |  (7 stores) |  |(LLM+Emb)|  | (8 providers)  |           |
-|   +-------------+  +---------+  +-------+--------+           |
-|                                         |                     |
-|                                  +------+------+              |
-|                                  | Claude API  |              |
-|                                  |   Adapter   |              |
-|                                  +-------------+              |
-|                                                               |
-|   +-------------------------------------------------------+   |
-|   |               Ingestion Pipeline                      |   |
-|   |  Detect -> Parse -> Dedup -> Normalize -> Chunk ->    |   |
-|   |  Embed -> Store -> Index                              |   |
-|   +-------------------------------------------------------+   |
-|   +-------------------------------------------------------+   |
-|   |               Analysis Pipeline (8 stages)            |   |
-|   |  Themes -> Sentiment -> Beliefs -> Entities ->        |   |
-|   |  Insights -> Contradictions -> Evolution -> Narrative  |   |
-|   +-------------------------------------------------------+   |
-|   +-------------------------------------------------------+   |
-|   |               RAG Query Pipeline                      |   |
-|   |  Classify -> Retrieve -> RRF Fuse -> Memory Augment   |   |
-|   |  -> LLM Generate (with citations)                     |   |
-|   +-------------------------------------------------------+   |
-+---------------------------------------------------------------+
+
+### Ingestion Pipeline
+
+```mermaid
+flowchart LR
+    A[Drop File/ZIP] --> B[Auto-Detect Source]
+    B --> C[Platform Adapter]
+    C --> D[Dedup by SHA-256]
+    D --> E[Normalize Unicode]
+    E --> F[Chunk 512 tokens]
+    F --> G[Generate Embeddings]
+    G --> H[Store + FTS5 Index]
+    H --> I[Auto-Run Analysis]
+
+    style A fill:#7c3aed,stroke:#a78bfa,color:white
+    style I fill:#22c55e,stroke:#4ade80,color:white
+```
+
+### Analysis Pipeline
+
+```mermaid
+flowchart LR
+    T[Themes] --> S[Sentiment]
+    S --> B[Beliefs]
+    B --> E[Entities]
+    E --> I[Insights]
+    I --> C[Contradictions]
+    C --> EV[Evolution]
+    EV --> N[Narratives]
+
+    style T fill:#7c3aed,stroke:#a78bfa,color:white
+    style N fill:#22c55e,stroke:#4ade80,color:white
+```
+
+### RAG Query Pipeline
+
+```mermaid
+flowchart LR
+    Q[User Question] --> EMB[Embed Query]
+    EMB --> VS[Vector Search]
+    EMB --> FTS[FTS5 Keyword Search]
+    VS --> RRF[Reciprocal Rank Fusion]
+    FTS --> RRF
+    RRF --> MEM[Memory Augmentation]
+    MEM --> LLM[LLM Generate]
+    LLM --> ANS[Answer + Citations]
+
+    style Q fill:#7c3aed,stroke:#a78bfa,color:white
+    style ANS fill:#22c55e,stroke:#4ade80,color:white
 ```
 
 ### Port Interfaces (9)
