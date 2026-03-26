@@ -36,7 +36,7 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-16 flex-col items-center border-r border-border bg-sidebar py-4 gap-1">
-      <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">
+      <div className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 text-white font-bold text-lg shadow-lg shadow-violet-600/25">
         M
       </div>
       {navItems.map(({ view, label, icon }) => (
