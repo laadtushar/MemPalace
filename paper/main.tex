@@ -2,9 +2,9 @@
 %% MemryLab: Tracking Personal Belief Evolution Through
 %%           Multi-Source Digital Footprint Analysis
 %%
-%% ACM sigconf format
+%% ACM CHI 2026 submission format (single-column review)
 %%
-\documentclass[sigconf,nonacm]{acmart}
+\documentclass[manuscript,review]{acmart}
 
 \usepackage{algorithm}
 \usepackage{algorithmic}
@@ -12,16 +12,17 @@
 \usepackage{subcaption}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{multirow}
 
 \lstset{
   basicstyle=\ttfamily\small,
   breaklines=true,
   frame=single,
-  language=Rust,
+  language=C,
   keywordstyle=\bfseries,
 }
 
-%% Rights / metadata (non-ACM preprint)
+%% Rights / metadata (preprint for review)
 \setcopyright{none}
 \settopmatter{printacmref=false}
 \renewcommand\footnotetextcopyrightpermission[1]{}
@@ -34,7 +35,7 @@
 \affiliation{%
   \institution{Independent Researcher}
 }
-\email{tushar@memrylab.dev}
+\email{tusharlaad2002@gmail.com}
 
 %%% -----------------------------------------------------------------
 %%% ABSTRACT
@@ -235,7 +236,7 @@ This design favors recall over precision in data ingestion, ensuring no personal
 
 The data fusion subsystem is built around the \texttt{SourceAdapter} trait, which every platform adapter implements:
 
-\begin{lstlisting}[language=Rust,caption={The SourceAdapter trait.},label={lst:source-adapter}]
+\begin{lstlisting}[caption={The SourceAdapter trait (Rust).},label={lst:source-adapter}]
 pub trait SourceAdapter: Send + Sync {
     fn metadata(&self) -> SourceAdapterMeta;
     fn detect(&self, file_listing: &[&str])
@@ -364,7 +365,7 @@ Stores application settings, LLM provider configuration, prompt versions, and an
 
 The LLM integration layer defines two port interfaces:
 
-\begin{lstlisting}[language=Rust,caption={LLM port interfaces.},label={lst:llm-ports}]
+\begin{lstlisting}[caption={LLM port interfaces (Rust).},label={lst:llm-ports}]
 #[async_trait]
 pub trait ILlmProvider: Send + Sync {
     async fn complete(&self, prompt: &str,
@@ -397,7 +398,7 @@ This enables the privacy-critical feature of showing users exactly what data was
 \section{Analysis Pipeline}
 \label{sec:pipeline}
 
-The analysis pipeline transforms raw personal documents into structured insights through eight sequential stages, orchestrated by a central \texttt{run\_analysis} function that coordinates all stages and aggregates results.
+The analysis pipeline transforms raw personal documents into structured insights through eight sequential stages (Figure~\ref{fig:pipeline}), orchestrated by a central \texttt{run\_analysis} function that coordinates all stages and aggregates results.
 
 % Figure placeholder for pipeline diagram
 \begin{figure}[t]
@@ -459,7 +460,7 @@ Contradiction detection is the novel analytical contribution of \textsc{MemryLab
 The challenge is to identify pairs of beliefs or preferences that are semantically contradictory, among a potentially large set of extracted facts.
 Na\"ive pairwise comparison has $O(n^2)$ complexity, which is prohibitive for large fact stores when each comparison requires an LLM call.
 
-Our algorithm uses a two-phase approach:
+Our algorithm uses a two-phase approach (Algorithm~\ref{alg:contradiction}):
 
 \begin{algorithm}[t]
 \caption{Contradiction Detection}
@@ -847,7 +848,7 @@ The system correctly classified this as a high-severity contradiction and noted 
 When surfaced to the participant, they reported being surprised by the explicit documentation of this shift, noting: ``I knew I'd changed my mind about this, but I didn't realize how starkly my old writing contradicts what I believe now.''
 
 \textbf{Evolution narrative.}
-The narrative generator produced a 400-word synthesis describing the participant's career philosophy evolution, noting the transition from a risk-averse to a growth-oriented mindset, correlated with a period of increased writing about entrepreneurship and creativity in their Obsidian notes.
+The narrative generator produced a 400-word synthesis describing the participant's career philosophy evolution, noting the transition from a risk-averse to a growth-oriented mindset, correlated with a period of increased writing about entrepreneurship and creativity in their Obsidian notes (Figure~\ref{fig:case-study}).
 
 % Figure placeholder for timeline
 \begin{figure}[t]
@@ -922,6 +923,37 @@ This is a significant limitation given that platforms like Instagram and TikTok 
 \textsc{MemryLab} is designed for individual use.
 There is no multi-user support, collaborative analysis, or shared knowledge base functionality.
 While this simplifies the privacy model, it precludes use cases such as couples reflecting on shared communication patterns.
+
+\textbf{Evaluation scope.}
+The quantitative evaluations presented in this paper rely on a single participant's data and synthetic belief pairs.
+A larger-scale user study with diverse participants, data volumes, and cultural contexts is needed to validate the generalizability of the system's analytical capabilities and the practical utility of the detected belief evolution patterns.
+
+\textbf{Platform export stability.}
+The 33 source adapters depend on the current export formats of their respective platforms.
+These formats are undocumented and subject to change without notice, which means adapters may require ongoing maintenance to remain functional.
+
+\subsection{Ethics Statement}
+\label{sec:ethics}
+
+This work involves the analysis of deeply personal data---journals, private messages, social media posts, and other intimate digital traces.
+We identify three primary ethical considerations.
+
+First, the system processes data that may include communications from third parties (e.g., messages in group chats) without those parties' explicit consent.
+While users have a legal right to download and process their own data exports under GDPR Article~20 and similar regulations, analyzing others' words raises ethical questions that users should consider.
+The system does not distinguish between the user's own text and others' text within conversation exports.
+
+Second, automated belief tracking and contradiction detection could be misused for self-surveillance that reinforces rumination or anxiety rather than promoting healthy self-reflection.
+The system is designed as a reflection aid, not a diagnostic or therapeutic tool, and should not be used as a substitute for professional mental health support.
+
+Third, while the local-first architecture provides strong privacy guarantees by default, users who opt into cloud LLM providers should understand that their personal text is transmitted to third-party servers for inference.
+The system mitigates this through transparent usage logging, but the ultimate responsibility for this privacy tradeoff rests with the user.
+
+\subsection{Open Science}
+\label{sec:open-science}
+
+\textsc{MemryLab} is released as open-source software under the MIT license.
+The complete source code, including all 33 source adapters, the eight-stage analysis pipeline, and the hybrid RAG system, is available at \url{https://github.com/tlaad/memrylab}.
+We encourage the research community to build upon this work, contribute additional source adapters, and conduct independent evaluations with diverse user populations.
 
 
 %%% =================================================================
@@ -1055,28 +1087,28 @@ Julien Leblay and Melisachew~Wudage Chekol.
 \newblock In {\em Companion Proceedings of The Web Conference}, pages 1771--1776, 2018.
 
 \bibitem{chhikara2025mem0}
-Prateek Chhikara, Dev Khant, Saket Arora, Taranjeet Singh, and Deshraj Yadav.
+Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet Singh, and Deshraj Yadav.
 \newblock Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory.
 \newblock {\em arXiv preprint arXiv:2504.19413}, 2025.
 
 \bibitem{qian2024memorag}
-Hongjin Qian, Peitian Zhang, Zheng Liu, Kelong Mao, and Zhicheng Dou.
-\newblock MemoRAG: Moving Towards Next-Gen RAG Via Memory-Inspired Knowledge Discovery.
-\newblock {\em arXiv preprint arXiv:2409.05591}, 2024.
+Hongjin Qian, Zheng Liu, Peitian Zhang, Kelong Mao, Defu Lian, Zhicheng Dou, and Tiejun Huang.
+\newblock MemoRAG: Boosting Long Context Processing with Global Memory-Enhanced Retrieval Augmentation.
+\newblock In {\em Proceedings of the ACM Web Conference 2025}, 2025.
 
 \bibitem{yang2025nemori}
-Jingru Yang, Yutong He, Wenqi Zhang, Yiwen Guo, Hao Chen, and Tao Gui.
-\newblock NEMORI: Towards Self-Organizing Agent Memory via Structured Entity-Relation Networks.
+Jiayan Nan et~al.
+\newblock Nemori: Self-Organizing Agent Memory Inspired by Cognitive Science.
 \newblock {\em arXiv preprint arXiv:2508.03341}, 2025.
 
 \bibitem{zhang2024hindsight}
-Dayoon Zhang, Ajay Patel, and Aditya Grover.
-\newblock Hindsight: A Framework for Agent Memory with Opinion Networks.
-\newblock {\em arXiv preprint arXiv:2512.12818}, 2024.
+Chris Latimer, Nicol{\'o} Boschi, Andrew Neeser, Chris Bartholomew, Gaurav Srivastava, Xuan Wang, and Naren Ramakrishnan.
+\newblock Hindsight is 20/20: Building Agent Memory that Retains, Recalls, and Reflects.
+\newblock {\em arXiv preprint arXiv:2512.12818}, 2025.
 
 \bibitem{nair2025episodic}
-Rishikesh Nair, Zijian Zhang, and Xiao~Liu.
-\newblock Episodic Memory for Retrieval-Augmented Generation.
+Shreyas Rajesh, Pavan Holur, Chenda Duan, David Chong, and Vwani Roychowdhury.
+\newblock Beyond Fact Retrieval: Episodic Memory for RAG with Generative Semantic Workspaces.
 \newblock {\em arXiv preprint arXiv:2511.07587}, 2025.
 
 \bibitem{xu2024knowledge}
