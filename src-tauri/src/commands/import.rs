@@ -98,8 +98,14 @@ pub fn list_sources() -> Vec<SourceAdapterMeta> {
     registry::all_adapter_metadata()
 }
 
-/// Generic import: accepts any file/folder/zip path and an optional adapter_id.
-/// If adapter_id is provided, uses that adapter. Otherwise, auto-detects from file contents.
+/// Exploratory import: accepts any file/folder/zip path and an optional adapter_id.
+///
+/// Two-pass strategy:
+/// 1. Run the best-matching platform adapter (or selected one) to parse platform-specific formats
+/// 2. Run the GenericAdapter as a sweep to catch ALL remaining text files the primary adapter missed
+/// 3. Deduplication (by content hash) ensures no double-counting
+///
+/// This means ANY folder structure — no matter how nested — gets fully explored.
 #[tauri::command]
 pub fn import_source(
     path: String,
@@ -133,16 +139,117 @@ pub fn import_source(
 
     let listing_refs: Vec<&str> = file_listing.iter().map(|s| s.as_str()).collect();
 
-    // Find adapter
-    let adapter: Box<dyn SourceAdapter> = if let Some(id) = adapter_id {
+    // Log structural scan for transparency
+    let file_count = file_listing.len();
+    let ext_counts = count_extensions(&file_listing);
+    log::info!(
+        "Import scan: {} files found. Extensions: {:?}",
+        file_count,
+        ext_counts
+    );
+
+    // Emit scan info to frontend
+    let _ = app_handle.emit(
+        "import-progress",
+        ImportProgress {
+            stage: "scanning".to_string(),
+            current: 0,
+            total: file_count,
+            message: format!(
+                "Found {} files ({})",
+                file_count,
+                ext_counts
+                    .iter()
+                    .map(|(ext, count)| format!("{} {}", count, ext))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        },
+    );
+
+    // Find primary adapter
+    let primary_adapter: Box<dyn SourceAdapter> = if let Some(id) = adapter_id {
         registry::all_adapters()
             .into_iter()
             .find(|a| a.metadata().id == id)
             .ok_or_else(|| format!("Unknown adapter: {}", id))?
     } else {
         registry::detect_adapter(&listing_refs)
-            .ok_or_else(|| "Could not detect source format. Try selecting the source type manually.".to_string())?
+            .ok_or_else(|| {
+                "Could not detect source format. Try selecting the source type manually."
+                    .to_string()
+            })?
     };
 
-    run_import(&app_handle, &state, adapter.as_ref(), &work_dir)
+    let primary_name = primary_adapter.metadata().display_name.clone();
+    let primary_id = primary_adapter.metadata().id.clone();
+
+    // Pass 1: Run platform-specific adapter
+    log::info!("Pass 1: Running {} adapter", primary_name);
+    let mut result = run_import(&app_handle, &state, primary_adapter.as_ref(), &work_dir)?;
+
+    // Pass 2: Sweep remaining files with GenericAdapter (unless primary IS generic)
+    if primary_id != "generic" && primary_id != "markdown" {
+        log::info!(
+            "Pass 2: Generic sweep for remaining text files (primary found {} docs)",
+            result.documents_imported
+        );
+
+        let _ = app_handle.emit(
+            "import-progress",
+            ImportProgress {
+                stage: "sweep".to_string(),
+                current: 0,
+                total: 0,
+                message: format!(
+                    "Sweeping for additional files missed by {} adapter...",
+                    primary_name
+                ),
+            },
+        );
+
+        let generic = crate::pipeline::ingestion::source_adapters::generic::GenericAdapter;
+        match run_import(&app_handle, &state, &generic, &work_dir) {
+            Ok(sweep) => {
+                // Merge results — duplicates are already handled by content hash dedup
+                result.documents_imported += sweep.documents_imported;
+                result.chunks_created += sweep.chunks_created;
+                result.embeddings_generated += sweep.embeddings_generated;
+                result.duplicates_skipped += sweep.duplicates_skipped;
+                result.errors.extend(sweep.errors);
+                result.duration_ms += sweep.duration_ms;
+
+                if sweep.documents_imported > 0 {
+                    log::info!(
+                        "Sweep found {} additional documents ({} were duplicates)",
+                        sweep.documents_imported,
+                        sweep.duplicates_skipped
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!("Generic sweep failed (non-fatal): {}", e);
+                result.errors.push(format!("Sweep: {}", e));
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+/// Count file extensions in a listing for structural reporting.
+fn count_extensions(files: &[String]) -> Vec<(String, usize)> {
+    let mut counts = std::collections::HashMap::new();
+    for f in files {
+        let ext = f
+            .rsplit('.')
+            .next()
+            .unwrap_or("other")
+            .to_lowercase();
+        *counts.entry(ext).or_insert(0usize) += 1;
+    }
+    let mut sorted: Vec<_> = counts.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.truncate(8); // Top 8 extensions
+    sorted
 }
