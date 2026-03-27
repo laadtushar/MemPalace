@@ -12,7 +12,7 @@ pub struct AskResponse {
 }
 
 #[tauri::command]
-pub fn ask(
+pub async fn ask(
     query: String,
     conversation_id: Option<String>,
     state: State<'_, AppState>,
@@ -20,29 +20,35 @@ pub fn ask(
     tracing::info!(query_len = query.len(), "RAG query received");
     let start = std::time::Instant::now();
 
-    let llm = state
-        .llm_provider
-        .read()
-        .map_err(|e| format!("Lock error: {}", e))?;
+    // Spawn on blocking thread pool so UI thread is not frozen
+    let document_store = state.document_store.clone();
+    let vector_store = state.vector_store.clone();
+    let page_index = state.page_index.clone();
+    let memory_store = state.memory_store.clone();
+    let llm_provider = state.llm_provider.clone();
+    let embedding_provider = state.embedding_provider.clone();
+    let query_clone = query.clone();
 
-    let embedding = state
-        .embedding_provider
-        .read()
-        .map_err(|e| format!("Lock error: {}", e))?;
-
-    let result = tauri::async_runtime::block_on(rag_pipeline::query_rag(
-        &query,
-        state.document_store.as_ref(),
-        state.vector_store.as_ref(),
-        state.page_index.as_ref(),
-        state.memory_store.as_ref(),
-        embedding.as_ref(),
-        llm.as_ref(),
-        5,
-    ))
-    .map_err(|e| {
+    let result = tokio::task::spawn_blocking(move || {
+        let llm = llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        let embedding = embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        tauri::async_runtime::block_on(rag_pipeline::query_rag(
+            &query_clone,
+            document_store.as_ref(),
+            vector_store.as_ref(),
+            page_index.as_ref(),
+            memory_store.as_ref(),
+            embedding.as_ref(),
+            llm.as_ref(),
+            5,
+        ))
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e: String| {
         tracing::error!(error = %e, "RAG query failed");
-        e.to_string()
+        e
     })?;
 
     let duration_ms = start.elapsed().as_millis() as u64;

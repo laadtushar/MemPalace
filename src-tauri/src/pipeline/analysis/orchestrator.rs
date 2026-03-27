@@ -78,14 +78,21 @@ pub async fn run_analysis(
     let months = timeline_store.get_document_count_by_month()?;
     let mut all_chunks: Vec<(String, String)> = Vec::new();
 
-    // Sample chunks from recent documents
+    // Sample chunks from recent documents, preserving source document timestamp
+    let mut chunk_timestamps: std::collections::HashMap<String, chrono::DateTime<Utc>> = std::collections::HashMap::new();
     for (_, _) in months.iter().take(12) {
         let date_range = timeline_store.get_date_range()?;
         if let Some(range) = date_range {
             let doc_ids = timeline_store.get_documents_in_range(&range)?;
             for doc_id in doc_ids.iter().take(10) {
+                let doc_timestamp = document_store.get_by_id(doc_id)
+                    .ok()
+                    .flatten()
+                    .map(|d| d.timestamp)
+                    .unwrap_or_else(Utc::now);
                 let chunks = document_store.get_chunks_by_document(doc_id)?;
                 for chunk in chunks.into_iter().take(3) {
+                    chunk_timestamps.insert(chunk.id.clone(), doc_timestamp);
                     all_chunks.push((chunk.id, chunk.text));
                 }
             }
@@ -114,9 +121,17 @@ pub async fn run_analysis(
     };
     log::info!("Analysis: extracted {} beliefs", beliefs.len());
 
-    // Store beliefs in memory store
+    // Store beliefs in memory store, using source document timestamps
     for fact in &beliefs {
-        if let Err(e) = memory_store.store(fact) {
+        let mut fact = fact.clone();
+        // Use the earliest source chunk's document timestamp instead of Utc::now()
+        if let Some(ts) = fact.source_chunks.iter()
+            .filter_map(|cid| chunk_timestamps.get(cid))
+            .min()
+        {
+            fact.first_seen = *ts;
+        }
+        if let Err(e) = memory_store.store(&fact) {
             log::warn!("Failed to store belief: {}", e);
         }
     }
@@ -138,6 +153,7 @@ pub async fn run_analysis(
     log::info!("Analysis: generated {} insights", insights.len());
 
     // Store insights as MemoryFacts with Insight category so they persist and appear in the UI
+    let earliest_theme_date = themes.iter().map(|t| t.time_window_start).min().unwrap_or_else(Utc::now);
     for insight in &insights {
         let fact = MemoryFact {
             id: Uuid::new_v4().to_string(),
@@ -145,7 +161,7 @@ pub async fn run_analysis(
             source_chunks: insight.supporting_evidence.clone(),
             confidence: 0.7,
             category: FactCategory::Insight,
-            first_seen: Utc::now(),
+            first_seen: earliest_theme_date,
             last_updated: Utc::now(),
             contradicted_by: vec![],
             is_active: true,

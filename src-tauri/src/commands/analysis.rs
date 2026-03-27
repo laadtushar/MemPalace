@@ -14,7 +14,7 @@ struct AnalysisProgress {
 }
 
 #[tauri::command]
-pub fn run_analysis(
+pub async fn run_analysis(
     granularity: Option<String>,
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
@@ -26,23 +26,31 @@ pub fn run_analysis(
         stage: "starting".into(), message: "Starting analysis...".into(),
     });
 
-    let llm = state
-        .llm_provider
-        .read()
-        .map_err(|e| format!("Lock error: {}", e))?;
-
     let config = AnalysisConfig {
         granularity: TimeGranularity::from_str_opt(granularity.as_deref()),
     };
 
-    let result = tauri::async_runtime::block_on(orchestrator::run_analysis(
-        state.document_store.as_ref(),
-        state.timeline_store.as_ref(),
-        state.memory_store.as_ref(),
-        state.graph_store.as_ref(),
-        llm.as_ref(),
-        Some(config),
-    ))
+    // Spawn on blocking thread pool so UI thread is not frozen
+    let document_store = state.document_store.clone();
+    let timeline_store = state.timeline_store.clone();
+    let memory_store = state.memory_store.clone();
+    let graph_store = state.graph_store.clone();
+    let llm_provider = state.llm_provider.clone();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let llm = llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        tauri::async_runtime::block_on(orchestrator::run_analysis(
+            document_store.as_ref(),
+            timeline_store.as_ref(),
+            memory_store.as_ref(),
+            graph_store.as_ref(),
+            llm.as_ref(),
+            Some(config),
+        ))
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
     .map_err(|e| {
         tracing::error!(error = %e, "Analysis failed");
         e.to_string()

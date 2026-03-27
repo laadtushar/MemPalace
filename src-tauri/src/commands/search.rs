@@ -58,7 +58,7 @@ pub fn keyword_search(
 }
 
 #[tauri::command]
-pub fn semantic_search(
+pub async fn semantic_search(
     query: String,
     top_k: Option<usize>,
     state: State<'_, AppState>,
@@ -66,46 +66,47 @@ pub fn semantic_search(
     let k = top_k.unwrap_or(10);
     tracing::debug!(query_len = query.len(), top_k = k, "Semantic search");
 
-    // Embed the query using the embedding provider
-    let provider = state
-        .embedding_provider
-        .read()
-        .map_err(|e| format!("Lock error: {}", e))?;
+    // Spawn on blocking thread pool so UI thread is not frozen
+    let embedding_provider = state.embedding_provider.clone();
+    let vector_store = state.vector_store.clone();
+    let document_store = state.document_store.clone();
 
-    let query_vector = tauri::async_runtime::block_on(provider.embed(&query))
-        .map_err(|e| format!("Embedding failed: {}. Is Ollama running?", e))?;
+    let results = tokio::task::spawn_blocking(move || {
+        let provider = embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        let query_vector = tauri::async_runtime::block_on(provider.embed(&query))
+            .map_err(|e| format!("Embedding failed: {}. Is Ollama running?", e))?;
 
-    // Search the vector store
-    let vector_results = state
-        .vector_store
-        .search(&query_vector, k, None)
-        .map_err(|e| e.to_string())?;
+        let vector_results = vector_store
+            .search(&query_vector, k, None)
+            .map_err(|e| e.to_string())?;
 
-    // Enrich with document metadata
-    let chunk_ids: Vec<String> = vector_results.iter().map(|r| r.id.clone()).collect();
-    let chunks = state
-        .document_store
-        .get_chunks_by_ids(&chunk_ids)
-        .map_err(|e| e.to_string())?;
+        let chunk_ids: Vec<String> = vector_results.iter().map(|r| r.id.clone()).collect();
+        let chunks = document_store
+            .get_chunks_by_ids(&chunk_ids)
+            .map_err(|e| e.to_string())?;
 
-    let mut results = Vec::new();
-    for vr in &vector_results {
-        if let Some(chunk) = chunks.iter().find(|c| c.id == vr.id) {
-            let (timestamp, platform) = match state.document_store.get_by_id(&chunk.document_id) {
-                Ok(Some(doc)) => (doc.timestamp.to_rfc3339(), doc.source_platform.to_string()),
-                _ => (String::new(), String::new()),
-            };
+        let mut results = Vec::new();
+        for vr in &vector_results {
+            if let Some(chunk) = chunks.iter().find(|c| c.id == vr.id) {
+                let (timestamp, platform) = match document_store.get_by_id(&chunk.document_id) {
+                    Ok(Some(doc)) => (doc.timestamp.to_rfc3339(), doc.source_platform.to_string()),
+                    _ => (String::new(), String::new()),
+                };
 
-            results.push(SearchResult {
-                chunk_id: chunk.id.clone(),
-                document_id: chunk.document_id.clone(),
-                text: chunk.text.clone(),
-                score: vr.score as f64,
-                timestamp,
-                source_platform: platform,
-            });
+                results.push(SearchResult {
+                    chunk_id: chunk.id.clone(),
+                    document_id: chunk.document_id.clone(),
+                    text: chunk.text.clone(),
+                    score: vr.score as f64,
+                    timestamp,
+                    source_platform: platform,
+                });
+            }
         }
-    }
+        Ok::<Vec<SearchResult>, String>(results)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))??;
 
     tracing::debug!(results = results.len(), "Semantic search complete");
     Ok(results)
@@ -113,7 +114,7 @@ pub fn semantic_search(
 
 /// Hybrid search: combine keyword (BM25) and semantic (vector) results via RRF.
 #[tauri::command]
-pub fn hybrid_search(
+pub async fn hybrid_search(
     query: String,
     top_k: Option<usize>,
     state: State<'_, AppState>,
@@ -126,7 +127,7 @@ pub fn hybrid_search(
     let keyword_results = keyword_search(query.clone(), Some(fetch_k), state.clone())?;
 
     // Try semantic search (may fail if Ollama isn't running)
-    let semantic_results = semantic_search(query, Some(fetch_k), state.clone()).unwrap_or_default();
+    let semantic_results = semantic_search(query, Some(fetch_k), state.clone()).await.unwrap_or_default();
 
     // Reciprocal Rank Fusion: score(d) = Σ 1/(k + rank_i(d))
     let rrf_k = 60.0_f64;

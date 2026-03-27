@@ -134,16 +134,19 @@ Instructions:
 - If the context doesn't contain enough information, say so
 - Reference specific time periods when relevant
 - Be empathetic and thoughtful — this is deeply personal data
-- Keep your response concise but insightful"#;
+- Keep your response concise but insightful
+- Only reference dates and time periods that appear in the context above. Do NOT reference the current date."#;
 
 pub const EVOLUTION_DIFF_V1: &str = "You are analyzing how a person's thinking evolved between two time periods.\n\n\
 Period A ({period_a_label}):\n{period_a_text}\n\n\
 Period B ({period_b_label}):\n{period_b_text}\n\n\
-Compare these two periods. Respond in JSON:\n\
+Compare these two periods. Only reference dates from the period labels above. Do NOT reference the current date.\n\
+Respond in JSON:\n\
 {\"summary\": \"2-3 sentence comparison\", \"sentiment_a\": \"positive/neutral/negative\", \"sentiment_b\": \"positive/neutral/negative\", \"key_shift\": \"what changed most\", \"quote_a\": \"most representative quote from period A\", \"quote_b\": \"most representative quote from period B\"}";
 
 pub const CONTRADICTION_CHECK_V1: &str = "Analyze these two beliefs/preferences from the same person. Are they contradictory?\n\n\
 Belief A: \"{fact_a}\"\nBelief B: \"{fact_b}\"\n\n\
+Do NOT reference the current date in your explanation.\n\
 Respond in JSON: {\"is_contradiction\": true/false, \"explanation\": \"brief explanation\", \"severity\": \"minor/moderate/major\"}";
 
 pub const NARRATIVE_GENERATION_V1: &str = "You are writing a reflective narrative about a person's evolution.\n\n\
