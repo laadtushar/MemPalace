@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ImportProgress, ImportSummary } from "@/lib/tauri";
+import type { ImportProgress } from "@/lib/tauri";
 
 export type View =
   | "timeline"
@@ -17,11 +17,14 @@ export type View =
 
 export type Theme = "dark" | "light";
 
-export interface BackgroundImport {
+export type BackgroundTaskType = "import" | "analysis" | "embeddings";
+
+export interface BackgroundTask {
   id: string;
-  sourceName: string;
+  type: BackgroundTaskType;
+  label: string;
   progress: ImportProgress | null;
-  summary: ImportSummary | null;
+  result: string | null;
   error: string | null;
   running: boolean;
 }
@@ -31,14 +34,15 @@ interface AppState {
   theme: Theme;
   isUnlocked: boolean;
   isOnboarded: boolean;
-  backgroundImports: BackgroundImport[];
+  backgroundTasks: BackgroundTask[];
   setView: (view: View) => void;
   toggleTheme: () => void;
   setUnlocked: (unlocked: boolean) => void;
   setOnboarded: (onboarded: boolean) => void;
-  addBackgroundImport: (bg: BackgroundImport) => void;
-  updateBackgroundImport: (update: Partial<BackgroundImport>) => void;
-  removeBackgroundImport: (id: string) => void;
+  addTask: (task: BackgroundTask) => void;
+  updateTask: (id: string, update: Partial<BackgroundTask>) => void;
+  updateTaskByProgress: (progress: ImportProgress) => void;
+  removeTask: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -46,31 +50,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   theme: (localStorage.getItem("mp-theme") as Theme) || "dark",
   isUnlocked: false,
   isOnboarded: true, // assume onboarded until check completes
-  backgroundImports: [],
+  backgroundTasks: [],
   setView: (view) => set({ currentView: view }),
   setUnlocked: (unlocked) => set({ isUnlocked: unlocked }),
   setOnboarded: (onboarded) => set({ isOnboarded: onboarded }),
-  addBackgroundImport: (bg) => set((s) => ({ backgroundImports: [...s.backgroundImports, bg] })),
-  updateBackgroundImport: (update) => {
-    // Match by import_id from progress event if available, else most recent running
-    const progressId = update.progress?.import_id;
+  addTask: (task) => set((s) => ({ backgroundTasks: [...s.backgroundTasks, task] })),
+  updateTask: (id, update) => set((s) => ({
+    backgroundTasks: s.backgroundTasks.map((t) => t.id === id ? { ...t, ...update } : t),
+  })),
+  updateTaskByProgress: (progress) => {
     set((s) => {
-      const imports = [...s.backgroundImports];
-      let idx = -1;
-      if (progressId) {
-        idx = imports.findIndex((i) => i.id === progressId);
-      }
+      const tasks = [...s.backgroundTasks];
+      let idx = tasks.findIndex((t) => t.id === progress.import_id);
       if (idx < 0) {
-        for (let j = imports.length - 1; j >= 0; j--) {
-          if (imports[j].running) { idx = j; break; }
+        for (let j = tasks.length - 1; j >= 0; j--) {
+          if (tasks[j].running) { idx = j; break; }
         }
       }
-      if (idx >= 0) imports[idx] = { ...imports[idx], ...update };
-      return { backgroundImports: imports };
+      if (idx >= 0) tasks[idx] = { ...tasks[idx], progress };
+      return { backgroundTasks: tasks };
     });
   },
-  removeBackgroundImport: (id) => set((s) => ({
-    backgroundImports: s.backgroundImports.filter((i) => i.id !== id),
+  removeTask: (id) => set((s) => ({
+    backgroundTasks: s.backgroundTasks.filter((t) => t.id !== id),
   })),
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";

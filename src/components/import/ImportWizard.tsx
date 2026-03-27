@@ -105,7 +105,7 @@ export function ImportWizard() {
   // Sync local progress from global store for the importing step UI.
   useEffect(() => {
     const unsub = useAppStore.subscribe((s) => {
-      const running = s.backgroundImports.find((i) => i.running);
+      const running = s.backgroundTasks.find((t) => t.type === "import" && t.running);
       if (running?.progress) setProgress(running.progress);
     });
     return unsub;
@@ -139,16 +139,17 @@ export function ImportWizard() {
     setStep("instructions");
   };
 
-  const { addBackgroundImport } = useAppStore();
+  const { addTask, updateTask } = useAppStore();
 
   /** Start import in background — user can navigate away immediately */
   const startBackgroundImport = (path: string, sourceName: string, sourceId?: string) => {
     const importId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    addBackgroundImport({
+    addTask({
       id: importId,
-      sourceName,
+      type: "import",
+      label: `Importing ${sourceName}`,
       progress: null,
-      summary: null,
+      result: null,
       error: null,
       running: true,
     });
@@ -157,19 +158,14 @@ export function ImportWizard() {
 
     // Fire and forget — runs async in background, pass importId so progress events correlate
     commands.importSource(path, sourceId, importId)
-      .then((result) => {
-        useAppStore.setState((s) => ({
-          backgroundImports: s.backgroundImports.map((i) =>
-            i.id === importId ? { ...i, summary: result, running: false } : i
-          ),
-        }));
+      .then((r) => {
+        updateTask(importId, {
+          running: false,
+          result: `${r.documents_imported} docs, ${r.chunks_created} chunks (${(r.duration_ms / 1000).toFixed(1)}s)`,
+        });
       })
       .catch((e) => {
-        useAppStore.setState((s) => ({
-          backgroundImports: s.backgroundImports.map((i) =>
-            i.id === importId ? { ...i, error: String(e), running: false } : i
-          ),
-        }));
+        updateTask(importId, { running: false, error: String(e) });
       });
   };
 

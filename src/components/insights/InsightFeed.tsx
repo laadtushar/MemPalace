@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { commands, type MemoryFactResponse, type AnalysisResult } from "@/lib/tauri";
 import { Brain, Trash2, Lightbulb, Play, Loader2, Sparkles } from "lucide-react";
+import { useAppStore } from "@/stores/app-store";
 
 const categories = ["insight", "belief", "preference", "fact", "self_description"];
 
@@ -44,19 +45,39 @@ export function InsightFeed() {
     }
   };
 
-  const runAnalysis = async () => {
+  const { addTask, updateTask } = useAppStore();
+
+  const runAnalysis = () => {
+    const taskId = `analysis-${Date.now()}`;
     setAnalyzing(true);
     setAnalysisResult(null);
     setAnalysisError(null);
-    try {
-      const result = await commands.runAnalysis();
-      setAnalysisResult(result);
-      // Reload facts to show new insights
-      await loadFacts();
-    } catch (e) {
-      setAnalysisError(String(e));
-    }
-    setAnalyzing(false);
+    addTask({
+      id: taskId,
+      type: "analysis",
+      label: "Running analysis pipeline",
+      progress: null,
+      result: null,
+      error: null,
+      running: true,
+    });
+
+    // Fire and forget — runs in background even if user navigates away
+    commands.runAnalysis()
+      .then((result) => {
+        setAnalysisResult(result);
+        setAnalyzing(false);
+        updateTask(taskId, {
+          running: false,
+          result: `${result.themes_extracted} themes, ${result.beliefs_extracted} beliefs, ${result.entities_extracted} entities, ${result.contradictions_found} contradictions`,
+        });
+        loadFacts();
+      })
+      .catch((e) => {
+        setAnalysisError(String(e));
+        setAnalyzing(false);
+        updateTask(taskId, { running: false, error: String(e) });
+      });
   };
 
   return (

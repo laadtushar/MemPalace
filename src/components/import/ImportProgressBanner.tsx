@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAppStore, type BackgroundImport } from "@/stores/app-store";
+import { useAppStore, type BackgroundTask } from "@/stores/app-store";
 import { commands, events } from "@/lib/tauri";
 import { CheckCircle, Loader2, X, AlertCircle, Sparkles } from "lucide-react";
 
@@ -16,30 +16,45 @@ const STAGE_LABELS: Record<string, string> = {
   complete: "Complete",
 };
 
-function ImportRow({ bg }: { bg: BackgroundImport }) {
-  const remove = useAppStore((s) => s.removeBackgroundImport);
+function TaskRow({ task }: { task: BackgroundTask }) {
+  const remove = useAppStore((s) => s.removeTask);
 
   // Completed
-  if (!bg.running && bg.summary && !bg.error) {
-    const hasNewDocs = bg.summary.documents_imported > 0;
+  if (!task.running && task.result && !task.error) {
+    const isImport = task.type === "import";
     return (
       <div className="flex items-center justify-between text-sm py-1.5 gap-3">
-        <div className="flex items-center gap-2 text-green-400">
-          <CheckCircle size={14} />
-          <span>
-            {bg.sourceName}: {bg.summary.documents_imported} docs,{" "}
-            {bg.summary.chunks_created} chunks
-            {bg.summary.duration_ms > 0 &&
-              ` (${(bg.summary.duration_ms / 1000).toFixed(1)}s)`}
-          </span>
+        <div className="flex items-center gap-2 text-green-400 min-w-0">
+          <CheckCircle size={14} className="shrink-0" />
+          <span className="truncate">{task.label}: {task.result}</span>
         </div>
-        <div className="flex items-center gap-2">
-          {hasNewDocs && (
+        <div className="flex items-center gap-2 shrink-0">
+          {isImport && (
             <button
               onClick={() => {
-                remove(bg.id);
+                remove(task.id);
                 useAppStore.getState().setView("insights");
-                commands.runAnalysis().catch(() => {});
+                // Start analysis as a background task
+                const taskId = `analysis-${Date.now()}`;
+                useAppStore.getState().addTask({
+                  id: taskId,
+                  type: "analysis",
+                  label: "Running analysis pipeline",
+                  progress: null,
+                  result: null,
+                  error: null,
+                  running: true,
+                });
+                commands.runAnalysis()
+                  .then((r) => {
+                    useAppStore.getState().updateTask(taskId, {
+                      running: false,
+                      result: `${r.themes_extracted} themes, ${r.beliefs_extracted} beliefs, ${r.entities_extracted} entities`,
+                    });
+                  })
+                  .catch((e) => {
+                    useAppStore.getState().updateTask(taskId, { running: false, error: String(e) });
+                  });
               }}
               className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
@@ -48,7 +63,7 @@ function ImportRow({ bg }: { bg: BackgroundImport }) {
             </button>
           )}
           <button
-            onClick={() => remove(bg.id)}
+            onClick={() => remove(task.id)}
             className="text-muted-foreground hover:text-foreground"
           >
             <X size={14} />
@@ -59,16 +74,16 @@ function ImportRow({ bg }: { bg: BackgroundImport }) {
   }
 
   // Error
-  if (!bg.running && bg.error) {
+  if (!task.running && task.error) {
     return (
-      <div className="flex items-center justify-between text-sm py-1">
-        <div className="flex items-center gap-2 text-destructive">
-          <AlertCircle size={14} />
-          <span>{bg.sourceName}: {bg.error}</span>
+      <div className="flex items-center justify-between text-sm py-1.5">
+        <div className="flex items-center gap-2 text-destructive min-w-0">
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="truncate">{task.label}: {task.error}</span>
         </div>
         <button
-          onClick={() => remove(bg.id)}
-          className="text-muted-foreground hover:text-foreground"
+          onClick={() => remove(task.id)}
+          className="text-muted-foreground hover:text-foreground shrink-0"
         >
           <X size={14} />
         </button>
@@ -77,18 +92,16 @@ function ImportRow({ bg }: { bg: BackgroundImport }) {
   }
 
   // Running
-  const progress = bg.progress;
+  const progress = task.progress;
   const pct =
     progress && progress.total > 0
       ? Math.round((progress.current / progress.total) * 100)
       : null;
 
   return (
-    <div className="flex items-center gap-3 text-sm py-1">
+    <div className="flex items-center gap-3 text-sm py-1.5">
       <Loader2 size={14} className="animate-spin text-primary shrink-0" />
-      <span className="text-muted-foreground shrink-0">
-        {bg.sourceName}
-      </span>
+      <span className="text-muted-foreground shrink-0">{task.label}</span>
       {progress && (
         <>
           <span className="text-xs text-muted-foreground shrink-0">
@@ -111,28 +124,49 @@ function ImportRow({ bg }: { bg: BackgroundImport }) {
           )}
         </>
       )}
+      {!progress && (
+        <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden max-w-xs">
+          <div className="h-full w-1/3 bg-primary/60 rounded-full animate-pulse" />
+        </div>
+      )}
     </div>
   );
 }
 
 export function ImportProgressBanner() {
-  const imports = useAppStore((s) => s.backgroundImports);
+  const tasks = useAppStore((s) => s.backgroundTasks);
 
   // Global progress listener — always mounted in AppShell, never unmounts
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     events.onImportProgress((p) => {
-      useAppStore.getState().updateBackgroundImport({ progress: p });
+      useAppStore.getState().updateTaskByProgress(p);
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
 
-  if (imports.length === 0) return null;
+  // Also listen for analysis progress events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    events.onAnalysisProgress((p) => {
+      // Update the running analysis task with stage info
+      const s = useAppStore.getState();
+      const analysisTask = s.backgroundTasks.find((t) => t.type === "analysis" && t.running);
+      if (analysisTask) {
+        s.updateTask(analysisTask.id, {
+          label: `Analysis: ${p.stage} — ${p.message}`,
+        });
+      }
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, []);
+
+  if (tasks.length === 0) return null;
 
   return (
-    <div className="border-t border-border bg-card px-4 py-1.5 space-y-0.5">
-      {imports.map((bg) => (
-        <ImportRow key={bg.id} bg={bg} />
+    <div className="border-t border-border bg-card px-4 py-1 space-y-0">
+      {tasks.map((task) => (
+        <TaskRow key={task.id} task={task} />
       ))}
     </div>
   );
