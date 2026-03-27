@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::adapters::sqlite::activity_store::ActivityEntry;
 use crate::app_state::AppState;
@@ -120,33 +120,39 @@ fn run_import(
 }
 
 #[tauri::command]
-pub fn import_obsidian(
+pub async fn import_obsidian(
     vault_path: String,
     app_handle: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<ImportSummary, String> {
-    let adapter = ObsidianAdapter;
-    run_import(&app_handle, &state, &adapter, Path::new(&vault_path))
+    tokio::task::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        let adapter = ObsidianAdapter;
+        run_import(&app_handle, &state, &adapter, Path::new(&vault_path))
+    }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
-pub fn import_markdown(
+pub async fn import_markdown(
     dir_path: String,
     app_handle: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<ImportSummary, String> {
-    let adapter = MarkdownAdapter;
-    run_import(&app_handle, &state, &adapter, Path::new(&dir_path))
+    tokio::task::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        let adapter = MarkdownAdapter;
+        run_import(&app_handle, &state, &adapter, Path::new(&dir_path))
+    }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[tauri::command]
-pub fn import_dayone(
+pub async fn import_dayone(
     file_path: String,
     app_handle: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<ImportSummary, String> {
-    let adapter = DayOneAdapter;
-    run_import(&app_handle, &state, &adapter, Path::new(&file_path))
+    tokio::task::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        let adapter = DayOneAdapter;
+        run_import(&app_handle, &state, &adapter, Path::new(&file_path))
+    }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// List all available source adapters with metadata (for the frontend import UI).
@@ -164,13 +170,27 @@ pub fn list_sources() -> Vec<SourceAdapterMeta> {
 ///
 /// This means ANY folder structure — no matter how nested — gets fully explored.
 #[tauri::command]
-pub fn import_source(
+pub async fn import_source(
     path: String,
     adapter_id: Option<String>,
     app_handle: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<ImportSummary, String> {
-    let input_path = Path::new(&path);
+    // Move AppHandle into spawn_blocking — retrieve state inside via app_handle.state()
+    tokio::task::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        import_source_blocking(&path, adapter_id, &app_handle, &state)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+fn import_source_blocking(
+    path: &str,
+    adapter_id: Option<String>,
+    app_handle: &AppHandle,
+    state: &AppState,
+) -> Result<ImportSummary, String> {
+    let input_path = Path::new(path);
 
     // If it's a ZIP, extract first and build file listing for detection
     let (work_dir, file_listing, _temp_dir) = if input_path

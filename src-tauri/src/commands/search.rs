@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::adapters::sqlite::activity_store::ActivityEntry;
 use crate::app_state::AppState;
@@ -61,34 +61,31 @@ pub fn keyword_search(
 pub async fn semantic_search(
     query: String,
     top_k: Option<usize>,
-    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<Vec<SearchResult>, String> {
     let k = top_k.unwrap_or(10);
     tracing::debug!(query_len = query.len(), top_k = k, "Semantic search");
 
-    // Spawn on blocking thread pool so UI thread is not frozen
-    let embedding_provider = state.embedding_provider.clone();
-    let vector_store = state.vector_store.clone();
-    let document_store = state.document_store.clone();
-
+    // Spawn on blocking thread pool — retrieve state via app_handle inside
     let results = tokio::task::spawn_blocking(move || {
-        let provider = embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        let state = app_handle.state::<AppState>();
+        let provider = state.embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
         let query_vector = tauri::async_runtime::block_on(provider.embed(&query))
             .map_err(|e| format!("Embedding failed: {}. Is Ollama running?", e))?;
 
-        let vector_results = vector_store
+        let vector_results = state.vector_store
             .search(&query_vector, k, None)
             .map_err(|e| e.to_string())?;
 
         let chunk_ids: Vec<String> = vector_results.iter().map(|r| r.id.clone()).collect();
-        let chunks = document_store
+        let chunks = state.document_store
             .get_chunks_by_ids(&chunk_ids)
             .map_err(|e| e.to_string())?;
 
         let mut results = Vec::new();
         for vr in &vector_results {
             if let Some(chunk) = chunks.iter().find(|c| c.id == vr.id) {
-                let (timestamp, platform) = match document_store.get_by_id(&chunk.document_id) {
+                let (timestamp, platform) = match state.document_store.get_by_id(&chunk.document_id) {
                     Ok(Some(doc)) => (doc.timestamp.to_rfc3339(), doc.source_platform.to_string()),
                     _ => (String::new(), String::new()),
                 };
@@ -117,17 +114,18 @@ pub async fn semantic_search(
 pub async fn hybrid_search(
     query: String,
     top_k: Option<usize>,
+    app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<SearchResult>, String> {
     let k = top_k.unwrap_or(10);
     let fetch_k = k * 3; // fetch more candidates for fusion
     let query_for_log = query.clone();
 
-    // Get keyword results
+    // Get keyword results (fast, synchronous FTS5)
     let keyword_results = keyword_search(query.clone(), Some(fetch_k), state.clone())?;
 
-    // Try semantic search (may fail if Ollama isn't running)
-    let semantic_results = semantic_search(query, Some(fetch_k), state.clone()).await.unwrap_or_default();
+    // Try semantic search (may fail if Ollama isn't running) — runs on blocking thread
+    let semantic_results = semantic_search(query, Some(fetch_k), app_handle).await.unwrap_or_default();
 
     // Reciprocal Rank Fusion: score(d) = Σ 1/(k + rank_i(d))
     let rrf_k = 60.0_f64;

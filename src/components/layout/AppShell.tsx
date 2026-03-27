@@ -13,6 +13,7 @@ import { GraphExplorer } from "@/components/graph/GraphExplorer";
 import { EvolutionExplorer } from "@/components/evolution/EvolutionExplorer";
 import { LogsView } from "@/components/logs/LogsView";
 import { SettingsPage } from "@/components/settings/SettingsPage";
+import { ImportProgressBanner } from "@/components/import/ImportProgressBanner";
 
 const viewComponents: Record<string, { component: React.ReactNode; label: string }> = {
   timeline: { component: <TimelineView />, label: "Timeline" },
@@ -36,11 +37,14 @@ export function AppShell() {
   return (
     <div className="flex h-screen w-screen bg-background">
       <Sidebar />
-      <main className="flex-1 overflow-hidden">
-        <ErrorBoundary fallbackTitle={`${view?.label ?? "View"} encountered an error`}>
-          {view?.component}
-        </ErrorBoundary>
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 overflow-hidden">
+          <ErrorBoundary fallbackTitle={`${view?.label ?? "View"} encountered an error`}>
+            {view?.component}
+          </ErrorBoundary>
+        </main>
+        <ImportProgressBanner />
+      </div>
     </div>
   );
 }

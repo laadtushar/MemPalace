@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::Manager;
 
 use crate::adapters::sqlite::activity_store::ActivityEntry;
 use crate::app_state::AppState;
@@ -15,29 +15,25 @@ pub struct AskResponse {
 pub async fn ask(
     query: String,
     conversation_id: Option<String>,
-    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<AskResponse, String> {
     tracing::info!(query_len = query.len(), "RAG query received");
     let start = std::time::Instant::now();
 
-    // Spawn on blocking thread pool so UI thread is not frozen
-    let document_store = state.document_store.clone();
-    let vector_store = state.vector_store.clone();
-    let page_index = state.page_index.clone();
-    let memory_store = state.memory_store.clone();
-    let llm_provider = state.llm_provider.clone();
-    let embedding_provider = state.embedding_provider.clone();
+    // Spawn on blocking thread pool — retrieve state via app_handle inside
     let query_clone = query.clone();
+    let handle = app_handle.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let llm = llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
-        let embedding = embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        let state = handle.state::<AppState>();
+        let llm = state.llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        let embedding = state.embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
         tauri::async_runtime::block_on(rag_pipeline::query_rag(
             &query_clone,
-            document_store.as_ref(),
-            vector_store.as_ref(),
-            page_index.as_ref(),
-            memory_store.as_ref(),
+            state.document_store.as_ref(),
+            state.vector_store.as_ref(),
+            state.page_index.as_ref(),
+            state.memory_store.as_ref(),
             embedding.as_ref(),
             llm.as_ref(),
             5,
@@ -60,6 +56,7 @@ pub async fn ask(
     );
 
     // Persist to chat history
+    let state = app_handle.state::<AppState>();
     let conv_id = if let Some(cid) = conversation_id {
         // Existing conversation
         let _ = state.chat_store.add_message(&cid, "user", &query, &[]);

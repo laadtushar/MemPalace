@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::adapters::sqlite::activity_store::ActivityEntry;
 use crate::app_state::AppState;
@@ -36,16 +36,26 @@ fn emit_progress(app_handle: &AppHandle, stage: &str, current: usize, total: usi
 /// Generate embeddings for all chunks that don't have them yet.
 /// Emits "embedding-progress" events so the frontend can show a progress bar.
 #[tauri::command]
-pub fn generate_embeddings(
+pub async fn generate_embeddings(
     app_handle: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<EmbeddingResult, String> {
+    tokio::task::spawn_blocking(move || {
+        generate_embeddings_blocking(&app_handle)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+fn generate_embeddings_blocking(
+    app_handle: &AppHandle,
+) -> Result<EmbeddingResult, String> {
+    let state = app_handle.state::<AppState>();
     let provider = state
         .embedding_provider
         .read()
         .map_err(|e| format!("Lock error: {}", e))?;
 
-    emit_progress(&app_handle, "scanning", 0, 0, "Scanning documents for chunks...");
+    emit_progress(app_handle, "scanning", 0, 0, "Scanning documents for chunks...");
 
     let months = state
         .timeline_store

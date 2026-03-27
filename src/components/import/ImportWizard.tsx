@@ -18,6 +18,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { SourceIcon } from "./SourceIcon";
+import { useAppStore } from "@/stores/app-store";
 
 type Step = "select" | "instructions" | "importing" | "done";
 
@@ -103,7 +104,11 @@ export function ImportWizard() {
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
-    events.onImportProgress((p) => setProgress(p)).then((fn) => {
+    events.onImportProgress((p) => {
+      setProgress(p);
+      // Also update background import progress in global store
+      useAppStore.getState().updateBackgroundImport({ progress: p });
+    }).then((fn) => {
       unlisten = fn;
     });
     return () => {
@@ -139,6 +144,30 @@ export function ImportWizard() {
     setStep("instructions");
   };
 
+  const { setBackgroundImport, updateBackgroundImport } = useAppStore();
+
+  /** Start import in background — user can navigate away immediately */
+  const startBackgroundImport = (path: string, sourceName: string, sourceId?: string) => {
+    setBackgroundImport({
+      sourceName,
+      progress: null,
+      summary: null,
+      error: null,
+      running: true,
+    });
+    // Reset wizard to selection so user can import more or navigate away
+    reset();
+
+    // Fire and forget — runs async in background
+    commands.importSource(path, sourceId)
+      .then((result) => {
+        updateBackgroundImport({ summary: result, running: false });
+      })
+      .catch((e) => {
+        updateBackgroundImport({ error: String(e), running: false });
+      });
+  };
+
   const handleImport = async () => {
     if (!selectedSource) return;
     setError(null);
@@ -171,11 +200,7 @@ export function ImportWizard() {
       }
 
       if (!path) return;
-
-      setStep("importing");
-      const result = await commands.importSource(path, selectedSource.id);
-      setSummary(result);
-      setStep("done");
+      startBackgroundImport(path, selectedSource.display_name, selectedSource.id);
     } catch (e) {
       setError(String(e));
       setStep("done");
@@ -209,11 +234,7 @@ export function ImportWizard() {
       });
       const path = result as string | null;
       if (!path) return;
-
-      setStep("importing");
-      const importResult = await commands.importSource(path);
-      setSummary(importResult);
-      setStep("done");
+      startBackgroundImport(path, "Auto-detect");
     } catch (e) {
       setError(String(e));
       setStep("done");

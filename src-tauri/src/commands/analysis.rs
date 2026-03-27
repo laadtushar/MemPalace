@@ -1,5 +1,5 @@
 use rusqlite::params;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::adapters::sqlite::activity_store::ActivityEntry;
 use crate::app_state::AppState;
@@ -17,7 +17,6 @@ struct AnalysisProgress {
 pub async fn run_analysis(
     granularity: Option<String>,
     app_handle: tauri::AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<AnalysisResult, String> {
     tracing::info!(granularity = ?granularity, "Starting analysis");
     let start = std::time::Instant::now();
@@ -30,43 +29,32 @@ pub async fn run_analysis(
         granularity: TimeGranularity::from_str_opt(granularity.as_deref()),
     };
 
-    // Spawn on blocking thread pool so UI thread is not frozen
-    let document_store = state.document_store.clone();
-    let timeline_store = state.timeline_store.clone();
-    let memory_store = state.memory_store.clone();
-    let graph_store = state.graph_store.clone();
-    let llm_provider = state.llm_provider.clone();
-
-    let result = tokio::task::spawn_blocking(move || {
-        let llm = llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
-        tauri::async_runtime::block_on(orchestrator::run_analysis(
-            document_store.as_ref(),
-            timeline_store.as_ref(),
-            memory_store.as_ref(),
-            graph_store.as_ref(),
+    // Spawn on blocking thread pool — retrieve state via app_handle inside
+    tokio::task::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        let llm = state.llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+        let result = tauri::async_runtime::block_on(orchestrator::run_analysis(
+            state.document_store.as_ref(),
+            state.timeline_store.as_ref(),
+            state.memory_store.as_ref(),
+            state.graph_store.as_ref(),
             llm.as_ref(),
             Some(config),
         ))
-        .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
-    .map_err(|e| {
-        tracing::error!(error = %e, "Analysis failed");
-        e.to_string()
-    });
+        .map_err(|e| {
+            tracing::error!(error = %e, "Analysis failed");
+            e.to_string()
+        })?;
 
-    let duration_ms = start.elapsed().as_millis() as u64;
-
-    if let Ok(ref r) = result {
+        let duration_ms = start.elapsed().as_millis() as u64;
         tracing::info!(
-            themes = r.themes_extracted,
-            beliefs = r.beliefs_extracted,
-            sentiments = r.sentiments_classified,
-            entities = r.entities_extracted,
-            insights = r.insights_generated,
-            contradictions = r.contradictions_found,
-            narratives = r.narratives_generated,
+            themes = result.themes_extracted,
+            beliefs = result.beliefs_extracted,
+            sentiments = result.sentiments_classified,
+            entities = result.entities_extracted,
+            insights = result.insights_generated,
+            contradictions = result.contradictions_found,
+            narratives = result.narratives_generated,
             duration_ms = duration_ms,
             "Analysis complete"
         );
@@ -79,15 +67,17 @@ pub async fn run_analysis(
             description: String::new(),
             result_summary: format!(
                 "{} themes, {} beliefs, {} entities, {} insights",
-                r.themes_extracted, r.beliefs_extracted, r.entities_extracted, r.insights_generated
+                result.themes_extracted, result.beliefs_extracted, result.entities_extracted, result.insights_generated
             ),
             metadata: serde_json::json!({}),
             duration_ms: duration_ms as i64,
             status: "success".to_string(),
         });
-    }
 
-    result
+        Ok(result)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[derive(serde::Serialize)]
@@ -104,7 +94,16 @@ pub struct PiiFlaggedFact {
 }
 
 #[tauri::command]
-pub fn scan_pii(state: State<'_, AppState>) -> Result<PiiScanResult, String> {
+pub async fn scan_pii(app_handle: tauri::AppHandle) -> Result<PiiScanResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let state = app_handle.state::<AppState>();
+        scan_pii_blocking(&state)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+fn scan_pii_blocking(state: &AppState) -> Result<PiiScanResult, String> {
     let detector = PiiDetector::new();
 
     let facts = state
