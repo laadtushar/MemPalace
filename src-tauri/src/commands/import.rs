@@ -14,6 +14,7 @@ use crate::pipeline::ingestion::zip_handler;
 
 #[derive(Clone, serde::Serialize)]
 struct ImportProgress {
+    import_id: String,
     stage: String,
     current: usize,
     total: usize,
@@ -25,14 +26,17 @@ fn run_import(
     state: &AppState,
     adapter: &dyn SourceAdapter,
     path: &Path,
+    import_id: &str,
 ) -> Result<ImportSummary, String> {
     tracing::info!(adapter = adapter.name(), path = %path.display(), "Starting import");
     let handle = app_handle.clone();
+    let id_owned = import_id.to_string();
     let progress_cb: Box<dyn Fn(&str, usize, usize, &str) + Send> =
         Box::new(move |stage, current, total, message| {
             let _ = handle.emit(
                 "import-progress",
                 ImportProgress {
+                    import_id: id_owned.clone(),
                     stage: stage.to_string(),
                     current,
                     total,
@@ -47,6 +51,7 @@ fn run_import(
     let _ = parse_handle.emit(
         "import-progress",
         ImportProgress {
+            import_id: import_id.to_string(),
             stage: "parsing".to_string(),
             current: 0,
             total: 0,
@@ -61,6 +66,7 @@ fn run_import(
     let _ = app_handle.emit(
         "import-progress",
         ImportProgress {
+            import_id: import_id.to_string(),
             stage: "parsing".to_string(),
             current: doc_count,
             total: doc_count,
@@ -127,7 +133,8 @@ pub async fn import_obsidian(
     tokio::task::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let adapter = ObsidianAdapter;
-        run_import(&app_handle, &state, &adapter, Path::new(&vault_path))
+        let id = format!("{:x}", md5_hash(&vault_path));
+        run_import(&app_handle, &state, &adapter, Path::new(&vault_path), &id)
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
@@ -139,7 +146,8 @@ pub async fn import_markdown(
     tokio::task::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let adapter = MarkdownAdapter;
-        run_import(&app_handle, &state, &adapter, Path::new(&dir_path))
+        let id = format!("{:x}", md5_hash(&dir_path));
+        run_import(&app_handle, &state, &adapter, Path::new(&dir_path), &id)
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
@@ -151,7 +159,8 @@ pub async fn import_dayone(
     tokio::task::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let adapter = DayOneAdapter;
-        run_import(&app_handle, &state, &adapter, Path::new(&file_path))
+        let id = format!("{:x}", md5_hash(&file_path));
+        run_import(&app_handle, &state, &adapter, Path::new(&file_path), &id)
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
@@ -173,15 +182,25 @@ pub fn list_sources() -> Vec<SourceAdapterMeta> {
 pub async fn import_source(
     path: String,
     adapter_id: Option<String>,
+    import_id: Option<String>,
     app_handle: AppHandle,
 ) -> Result<ImportSummary, String> {
     // Move AppHandle into spawn_blocking — retrieve state inside via app_handle.state()
     tokio::task::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
-        import_source_blocking(&path, adapter_id, &app_handle, &state)
+        let id = import_id.unwrap_or_else(|| format!("{:x}", md5_hash(&path)));
+        import_source_blocking(&path, adapter_id, &app_handle, &state, &id)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
+}
+
+fn md5_hash(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut hasher);
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis().hash(&mut hasher);
+    hasher.finish()
 }
 
 fn import_source_blocking(
@@ -189,6 +208,7 @@ fn import_source_blocking(
     adapter_id: Option<String>,
     app_handle: &AppHandle,
     state: &AppState,
+    import_id: &str,
 ) -> Result<ImportSummary, String> {
     let input_path = Path::new(path);
 
@@ -229,6 +249,7 @@ fn import_source_blocking(
     let _ = app_handle.emit(
         "import-progress",
         ImportProgress {
+            import_id: import_id.to_string(),
             stage: "scanning".to_string(),
             current: 0,
             total: file_count,
@@ -263,7 +284,7 @@ fn import_source_blocking(
 
     // Pass 1: Run platform-specific adapter
     log::info!("Pass 1: Running {} adapter", primary_name);
-    let mut result = run_import(&app_handle, &state, primary_adapter.as_ref(), &work_dir)?;
+    let mut result = run_import(&app_handle, &state, primary_adapter.as_ref(), &work_dir, import_id)?;
 
     // Pass 2: Sweep remaining files with GenericAdapter (unless primary IS generic)
     if primary_id != "generic" && primary_id != "markdown" {
@@ -275,6 +296,7 @@ fn import_source_blocking(
         let _ = app_handle.emit(
             "import-progress",
             ImportProgress {
+                import_id: import_id.to_string(),
                 stage: "sweep".to_string(),
                 current: 0,
                 total: 0,
@@ -286,7 +308,7 @@ fn import_source_blocking(
         );
 
         let generic = crate::pipeline::ingestion::source_adapters::generic::GenericAdapter;
-        match run_import(&app_handle, &state, &generic, &work_dir) {
+        match run_import(&app_handle, &state, &generic, &work_dir, import_id) {
             Ok(sweep) => {
                 // Merge results — duplicates are already handled by content hash dedup
                 result.documents_imported += sweep.documents_imported;
@@ -334,6 +356,7 @@ fn import_source_blocking(
     // Auto-trigger analysis if documents were imported
     if result.documents_imported > 0 {
         let _ = app_handle.emit("import-progress", ImportProgress {
+            import_id: import_id.to_string(),
             stage: "analysis".to_string(),
             current: 0,
             total: 0,
@@ -361,6 +384,7 @@ fn import_source_blocking(
                         "Auto-analysis after import complete"
                     );
                     let _ = app_handle.emit("import-progress", ImportProgress {
+                        import_id: import_id.to_string(),
                         stage: "analysis-complete".to_string(),
                         current: 0,
                         total: 0,

@@ -11,6 +11,7 @@ export interface ImportSummary {
 }
 
 export interface ImportProgress {
+  import_id: string;
   stage: string;
   current: number;
   total: number;

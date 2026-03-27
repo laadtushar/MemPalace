@@ -155,8 +155,8 @@ export function ImportWizard() {
     // Reset wizard to selection so user can import more or navigate away
     reset();
 
-    // Fire and forget — runs async in background
-    commands.importSource(path, sourceId)
+    // Fire and forget — runs async in background, pass importId so progress events correlate
+    commands.importSource(path, sourceId, importId)
       .then((result) => {
         useAppStore.setState((s) => ({
           backgroundImports: s.backgroundImports.map((i) =>

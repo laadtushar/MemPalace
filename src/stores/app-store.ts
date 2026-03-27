@@ -52,12 +52,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   setOnboarded: (onboarded) => set({ isOnboarded: onboarded }),
   addBackgroundImport: (bg) => set((s) => ({ backgroundImports: [...s.backgroundImports, bg] })),
   updateBackgroundImport: (update) => {
-    // Update the most recent running import (progress events don't carry an ID)
+    // Match by import_id from progress event if available, else most recent running
+    const progressId = update.progress?.import_id;
     set((s) => {
       const imports = [...s.backgroundImports];
       let idx = -1;
-      for (let j = imports.length - 1; j >= 0; j--) {
-        if (imports[j].running) { idx = j; break; }
+      if (progressId) {
+        idx = imports.findIndex((i) => i.id === progressId);
+      }
+      if (idx < 0) {
+        for (let j = imports.length - 1; j >= 0; j--) {
+          if (imports[j].running) { idx = j; break; }
+        }
       }
       if (idx >= 0) imports[idx] = { ...imports[idx], ...update };
       return { backgroundImports: imports };

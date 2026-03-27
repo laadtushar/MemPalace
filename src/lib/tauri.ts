@@ -13,6 +13,7 @@ export interface ImportSummary {
 }
 
 export interface ImportProgress {
+  import_id: string;
   stage: string;
   current: number;
   total: number;
@@ -265,8 +266,8 @@ export const commands = {
     invoke<ImportSummary>("import_markdown", { dirPath }),
   importDayone: (filePath: string) =>
     invoke<ImportSummary>("import_dayone", { filePath }),
-  importSource: (path: string, adapterId?: string) =>
-    invoke<ImportSummary>("import_source", { path, adapterId }),
+  importSource: (path: string, adapterId?: string, importId?: string) =>
+    invoke<ImportSummary>("import_source", { path, adapterId, importId }),
   listSources: () =>
     invoke<SourceAdapterMeta[]>("list_sources"),
 
