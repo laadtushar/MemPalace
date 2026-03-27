@@ -115,6 +115,7 @@ export default function Home() {
               <a href="#preview" className="hover:text-white transition">Preview</a>
               <a href="#sources" className="hover:text-white transition">Sources</a>
               <a href="/docs" className="hover:text-white transition">Docs</a>
+              <a href="/blog" className="hover:text-white transition">Blog</a>
               <a href="https://github.com/laadtushar/MemryLab" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-white transition">
                 <Github size={15} /> GitHub
               </a>
@@ -333,6 +334,7 @@ export default function Home() {
               <a href="/docs/getting-started" className="text-zinc-400 hover:text-white transition">Getting Started</a>
               <a href="https://github.com/laadtushar/MemryLab/blob/master/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white transition">Contribute</a>
               <a href="/docs/ai-providers" className="text-zinc-400 hover:text-white transition">AI Providers</a>
+              <a href="/blog" className="text-zinc-400 hover:text-white transition">Blog</a>
               <a href="https://www.linkedin.com/in/tusharlaad2002/" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white transition">Creator</a>
             </div>
           </div>
