@@ -16,9 +16,10 @@ import {
   Sparkles,
   Shield,
   FolderOpen,
+  Brain,
+  Search,
   Cpu,
   Cloud,
-  Info,
 } from "lucide-react";
 import { SourceIcon } from "@/components/import/SourceIcon";
 
@@ -296,11 +297,20 @@ function StepProvider({
         ))}
       </div>
 
+      {/* Explanation of two model types */}
+      {selectedProvider && (
+        <div className="rounded-lg bg-muted/50 border border-border px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+          <p><strong className="text-foreground">MemryLab uses two types of AI models:</strong></p>
+          <p><Brain size={10} className="inline mr-1 text-primary" /><strong className="text-foreground">LLM</strong> (Analysis) — extracts beliefs, detects contradictions, generates narratives. Needs a powerful model.</p>
+          <p><Search size={10} className="inline mr-1 text-cyan-400" /><strong className="text-foreground">Embedding</strong> (Search) — converts text to vectors for semantic search. Smaller, faster model.</p>
+        </div>
+      )}
+
       {/* Ollama model selection */}
       {selectedProvider?.id === "ollama" && (
         <div className="space-y-2">
           <label className="text-sm font-medium flex items-center gap-1.5">
-            <Info size={12} className="text-muted-foreground" /> Select model for your GPU
+            <Brain size={12} className="text-primary" /> LLM Model (pick by your GPU VRAM)
           </label>
           <div className="space-y-1">
             {OLLAMA_MODELS.map((m) => (
@@ -321,32 +331,48 @@ function StepProvider({
               </button>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
-            Run <code className="bg-muted px-1 rounded">ollama pull {ollamaModel}</code> and <code className="bg-muted px-1 rounded">ollama pull nomic-embed-text</code> first.
-          </p>
+          <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
+            <p><strong className="text-foreground">Run these commands in your terminal:</strong></p>
+            <p><code className="bg-background px-1 rounded">ollama pull {ollamaModel}</code> <span className="text-muted-foreground/60">— LLM for analysis</span></p>
+            <p><code className="bg-background px-1 rounded">ollama pull nomic-embed-text</code> <span className="text-muted-foreground/60">— embedding model for search (274 MB)</span></p>
+          </div>
         </div>
       )}
 
       {/* API key input for cloud providers */}
       {selectedProvider && selectedProvider.id !== "ollama" && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">API Key</label>
-            <a href={selectedProvider.signup_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-primary hover:underline">
-              Get free API Key <ExternalLink size={10} />
-            </a>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">API Key</label>
+              <a href={selectedProvider.signup_url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-primary hover:underline">
+                Get free API Key <ExternalLink size={10} />
+              </a>
+            </div>
+            <div className="relative">
+              <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => onApiKeyChange(e.target.value)}
+                placeholder={`Paste your ${selectedProvider.name} API key`}
+                className="w-full rounded-md border border-input bg-background pl-9 pr-4 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
           </div>
-          <div className="relative">
-            <Key size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => onApiKeyChange(e.target.value)}
-              placeholder={`Paste your ${selectedProvider.name} API key`}
-              className="w-full rounded-md border border-input bg-background pl-9 pr-4 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
+          {selectedProvider.supports_embeddings ? (
+            <p className="text-xs text-green-400 flex items-center gap-1">
+              <CheckCircle size={10} />
+              {selectedProvider.name} supports both LLM and embeddings — no extra setup needed.
+            </p>
+          ) : (
+            <div className="rounded-md bg-yellow-500/5 border border-yellow-500/20 px-3 py-2 text-xs text-yellow-400">
+              <p>{selectedProvider.name} handles analysis only. For search, install Ollama locally:</p>
+              <p className="mt-1"><code className="bg-background px-1 rounded text-foreground">ollama pull nomic-embed-text</code></p>
+              <p className="mt-1 text-muted-foreground">Or change to Gemini/Mistral/Cohere which include embeddings.</p>
+            </div>
+          )}
         </div>
       )}
 
