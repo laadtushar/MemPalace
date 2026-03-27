@@ -13,6 +13,7 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{url}
+\usepackage{xurl}
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{listings}
@@ -34,10 +35,9 @@
 \title{``I Used to Think That'': Surfacing Personal Belief\\Change from Digital Traces}
 
 \author{
-\IEEEauthorblockN{Tushar Laad}
+\IEEEauthorblockN{Tushar Laad\thanks{Project website: \url{https://memrylab.com}}}
 \IEEEauthorblockA{Independent Researcher\\
-Email: tushar@memrylab.com\\
-https://memrylab.com}
+Email: tushar@memrylab.com}
 }
 
 \maketitle
@@ -45,7 +45,7 @@ https://memrylab.com}
 \begin{abstract}
 People accumulate vast personal writing across social media, journals, and messaging platforms, yet no tool helps them understand how their beliefs have changed. We present MemryLab, a privacy-preserving system that extracts structured beliefs from heterogeneous digital archives, detects temporal contradictions between them, and synthesizes second-person evolution narratives grounded in the user's own words.
 
-The core technical contribution is an efficient contradiction detection method that reduces the $O(n^2)$ LLM verification cost of naive pairwise comparison. The method embeds all beliefs ($O(n)$ calls), filters candidates by cosine similarity ($\tau{=}0.7$), and submits only the top $k \leq 20$ pairs to an LLM for verification---cutting model calls by over 95\% while maintaining F1 scores of 0.76--0.90 across three backends.
+The core technical contribution is an efficient contradiction detection method that reduces the $O(n^2)$ LLM verification cost of naive pairwise comparison. The method embeds all beliefs ($O(n)$ calls), filters candidates by cosine similarity ($\tau{=}0.7$), and submits only the top $k \leq 20$ pairs to an LLM for verification---cutting model calls by over 99\% while maintaining F1 scores of 0.76--0.90 across three backends.
 
 A longitudinal case study over 14,653 documents and a lightweight user study ($n{=}6$) provide initial evidence that the system surfaces instances of belief evolution users had not previously articulated. One participant reported: \emph{``I knew I'd changed my mind, but I didn't realize how starkly my old writing contradicts what I believe now.''}
 
@@ -84,9 +84,9 @@ We present MemryLab with three contributions:
 \section{Related Work}
 \label{sec:related}
 
-\textbf{Personal information management and digital memory} have long addressed storage and retrieval~\cite{jones2007pim,lansdale1988psychology}, from Bush's Memex~\cite{bush1945memex} to Bell's MyLifeBits~\cite{gemmell2002mylifebits,bell2009total}. Boardman and Sasse~\cite{boardman2004stuff} identified cross-tool fragmentation as a barrier to coherence; Whittaker~\cite{whittaker2011personal} showed people maintain separate organizational schemes across tools. Personal knowledge graphs~\cite{balog2019personal,kejriwal2021knowledge} and temporal knowledge graphs~\cite{jiang2024tkg_survey,leblay2018temporal} provide formal frameworks for organizing personal information over time. What these systems share is a focus on \emph{retrieval}---none model belief \emph{change} or detect evolution. MemryLab treats documents not as retrieval targets but as evidence of mental state over time.
+\textbf{Personal information management and digital memory} have long addressed storage and retrieval~\cite{jones2007pim,lansdale1988psychology}, from Bush's Memex~\cite{bush1945memex} to Bell's MyLifeBits~\cite{gemmell2002mylifebits,bell2009total}. Boardman and Sasse~\cite{boardman2004stuff} identified cross-tool fragmentation as a barrier to coherence; Whittaker~\cite{whittaker2011personal} showed people maintain separate organizational schemes across tools. Personal knowledge graphs~\cite{balog2019personal,kejriwal2021knowledge} and temporal knowledge graphs~\cite{cai2024tkg_survey,leblay2018temporal} provide formal frameworks for organizing personal information over time. What these systems share is a focus on \emph{retrieval}---none model belief \emph{change} or detect evolution. MemryLab treats documents not as retrieval targets but as evidence of mental state over time.
 
-\textbf{Memory-augmented AI systems} have recently seen rapid progress~\cite{chhikara2025mem0,qian2025memorag,nan2025nemori}. Mem0~\cite{chhikara2025mem0} introduces a self-improving memory layer; NEMORI~\cite{nan2025nemori} organizes memory hierarchies inspired by cognitive science; Hindsight~\cite{latimer2025hindsight} formalizes opinion evolution in agent networks; episodic memory approaches~\cite{nair2025episodic} improve RAG with persistent context. These systems model what an AI agent knows, not how a \emph{user's} beliefs change across time. Xu et al.~\cite{xu2024knowledge} survey knowledge conflicts in LLMs; we apply a related contradiction formulation to the intra-personal setting, where both conflicting facts originate from the same person at different times.
+\textbf{Memory-augmented AI systems} have recently seen rapid progress~\cite{chhikara2025mem0,qian2025memorag,nan2025nemori}. Mem0~\cite{chhikara2025mem0} introduces a self-improving memory layer; NEMORI~\cite{nan2025nemori} organizes memory hierarchies inspired by cognitive science; Hindsight~\cite{latimer2025hindsight} structures agent memory into factual and evolving-belief networks enabling traceable opinion updates across sessions; episodic memory approaches~\cite{rajesh2025episodic} improve RAG with structured spatiotemporal representations. These systems model what an AI agent knows, not how a \emph{user's} beliefs change across time. Xu et al.~\cite{xu2024knowledge} survey knowledge conflicts in LLMs; we apply a related contradiction formulation to the intra-personal setting, where both conflicting facts originate from the same person at different times.
 
 \textbf{Digital footprint analysis} has shown that personal writing contains rich psychological signals~\cite{kosinski2013private,youyou2015computer}. Temporal sentiment analysis detects mood patterns~\cite{thelwall2012sentiment,golder2011diurnal}, life events~\cite{li2014major}, and mental health indicators~\cite{de2013social}. However, this body of work analyzes single platforms in isolation and focuses on emotional tone rather than structured belief representations. NER research~\cite{li2020survey,yadav2018ner} extracts entities but not the first-person beliefs that constitute personal philosophy. MemryLab bridges this gap: it fuses multi-platform archives, extracts typed belief records, and detects \emph{contradictions between beliefs}---a signal not addressed by any prior personal analytics system.
 
@@ -196,7 +196,7 @@ Total cost: $O(n)$ embedding calls $+$ $O(k)$ LLM calls, where $k$ is a fixed co
 
 \textbf{Stage 7: Evolution Arc Detection.} \texttt{ThemeSnapshot} objects across adjacent time windows are compared to classify per-theme trends (increasing, decreasing, stable, oscillating) and aggregate them into coherent evolution arcs.
 
-\textbf{Stage 8: Narrative Generation.} Evolution arcs, contradictions, and insights are synthesized into second-person prose narratives with verifiable source citations. The second-person voice (``Your writing shows...'') promotes self-reflection~\cite{wilson2011selfhelp} and invites the user to verify claims against their original text.
+\textbf{Stage 8: Narrative Generation.} Evolution arcs, contradictions, and insights are synthesized into second-person prose narratives with verifiable source citations. The second-person voice (``Your writing shows...'') promotes self-reflection through psychological self-distancing~\cite{kross2017selfdistancing} and invites the user to verify claims against their original text.
 
 %%% =================================================================
 %%% 5  QUERY AND RETRIEVAL
@@ -316,22 +316,22 @@ Monthly theme extraction identified 47 unique themes across 24 windows; the most
 
 \begin{figure}[t]
 \centering
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{|p{3.6cm}|p{3.6cm}|}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{|p{3.45cm}|p{3.45cm}|}
 \hline
-\textbf{Belief A} {\scriptsize(Journal, Mar 2022)} &
-\textbf{Belief B} {\scriptsize(Twitter, Nov 2023)} \\
+\textbf{Belief A} {\tiny(Journal, Mar 2022)} &
+\textbf{Belief B} {\tiny(Twitter, Nov 2023)} \\
 \hline
 ``I value stability and predictability in my career. Taking risks feels irresponsible.'' &
 ``The biggest growth moments came from embracing uncertainty. Playing it safe is the real risk.'' \\
 \hline
 \multicolumn{2}{|c|}{\cellcolor{red!10}%
   \textbf{Contradiction detected} \;
-  (\textit{similarity} $= 0.81 > \tau$; LLM: confirmed, severity: high)}\\
+  (\textit{sim} $= 0.81 > \tau$; LLM: confirmed, severity: high)}\\
 \hline
-\multicolumn{2}{|p{7.45cm}|}{%
-  \textbf{Generated narrative:} ``Between 2022 and 2023, your relationship with risk underwent a fundamental reversal. Your journal reveals a period when stability was paramount; your later writing celebrates the growth that only uncertainty can bring.''}\\
+\multicolumn{2}{|p{7.15cm}|}{%
+  \textbf{Narrative:} ``Between 2022 and 2023, your relationship with risk underwent a fundamental reversal. Your journal reveals a period when stability was paramount; your later writing celebrates the growth that only uncertainty can bring.''}\\
 \hline
 \end{tabular}
 \caption{End-to-end example: two extracted beliefs spanning 20 months trigger a confirmed contradiction, which seeds a second-person evolution narrative.}
@@ -408,6 +408,12 @@ While the sample is small and convenience-based, it provides initial directional
 \textbf{Conclusion.} We presented MemryLab, a privacy-preserving system that fuses 33 platform data exports, extracts structured beliefs, and automatically detects temporal contradictions to surface personal belief evolution. The contradiction detection algorithm matches all-pairs LLM accuracy while reducing LLM calls by over 99\%, making longitudinal belief analysis practical on consumer hardware. The system is open-source under the MIT license at \url{https://github.com/tlaad/memrylab}.
 
 %%% =================================================================
+%%% ACKNOWLEDGMENTS
+%%% =================================================================
+\section*{Acknowledgments}
+The author thanks the six participants of the user study for their time and candid feedback. Gemini~1.5~Flash and GPT-4o-mini were used as evaluation backends in the quantitative experiments described in Section~\ref{sec:evaluation}; no AI tool was used in the writing of this manuscript.
+
+%%% =================================================================
 %%% REFERENCES
 %%% =================================================================
 \begin{thebibliography}{45}
@@ -448,7 +454,7 @@ K.~Balog and T.~Kenter, ``Personal knowledge graphs: A research agenda,'' in \em
 \bibitem{kejriwal2021knowledge}
 M.~Kejriwal, C.~A.~Knoblock, and P.~Szekely, \emph{Knowledge Graphs: Fundamentals, Techniques, and Applications}. MIT Press, 2021.
 
-\bibitem{jiang2024tkg_survey}
+\bibitem{cai2024tkg_survey}
 L.~Cai, X.~Mao, Y.~Zhou, Z.~Long, C.~Wu, and M.~Lan, ``A survey on temporal knowledge graph: Representation learning and applications,'' \emph{arXiv:2403.04782}, 2024. [Online]. Available: \url{https://arxiv.org/abs/2403.04782}
 
 \bibitem{leblay2018temporal}
@@ -472,8 +478,8 @@ J.~Nan \emph{et~al.}, ``Nemori: Self-organizing agent memory inspired by cogniti
 \bibitem{latimer2025hindsight}
 C.~Latimer \emph{et~al.}, ``Hindsight is 20/20: Building agent memory that retains, recalls, and reflects,'' \emph{arXiv:2512.12818}, 2025. [Online]. Available: \url{https://arxiv.org/abs/2512.12818}
 
-\bibitem{nair2025episodic}
-S.~R.~Nair, P.~Holur, C.~Duan, D.~Chong, and V.~Roychowdhury, ``Beyond fact retrieval: Episodic memory for RAG with generative semantic workspaces,'' \emph{arXiv:2511.07587}, 2025. [Online]. Available: \url{https://arxiv.org/abs/2511.07587}
+\bibitem{rajesh2025episodic}
+S.~Rajesh, P.~Holur, C.~Duan, D.~Chong, and V.~Roychowdhury, ``Beyond fact retrieval: Episodic memory for RAG with generative semantic workspaces,'' in \emph{Proc. AAAI}, 2026. [Online]. Available: \url{https://arxiv.org/abs/2511.07587}
 
 \bibitem{xu2024knowledge}
 R.~Xu \emph{et~al.}, ``Knowledge conflicts for LLMs: A survey,'' in \emph{Proc. EMNLP}, 2024, pp.~8541--8565. [Online]. Available: \url{https://doi.org/10.18653/v1/2024.emnlp-main.486}
@@ -529,8 +535,8 @@ D.~R.~Hipp, ``SQLite FTS5 extension,'' SQLite Documentation, 2023. [Online]. Ava
 \bibitem{thompson2024tauri}
 D.~Thompson-Yvetot, L.~Nogueira, \emph{et~al.}, ``Tauri: Build smaller, faster, and more secure desktop and mobile applications,'' 2024. [Online]. Available: \url{https://v2.tauri.app}
 
-\bibitem{bostock2011d3}
-M.~Bostock, V.~Ogievetsky, and J.~Heer, ``D$^3$: Data-driven documents,'' \emph{IEEE Trans. Vis. Comput. Graphics}, vol.~17, no.~12, pp.~2301--2309, 2011. [Online]. Available: \url{https://doi.org/10.1109/TVCG.2011.185}
+\bibitem{kross2017selfdistancing}
+E.~Kross and O.~Ayduk, ``Self-distancing: Theory, research, and current directions,'' \emph{Adv. Exp. Soc. Psychol.}, vol.~55, pp.~81--136, 2017. [Online]. Available: \url{https://doi.org/10.1016/bs.aesp.2016.10.002}
 
 \bibitem{beck1979cognitive}
 A.~T.~Beck, \emph{Cognitive Therapy and the Emotional Disorders}. Penguin Books, 1979.
@@ -543,9 +549,6 @@ M.~Ruckenstein, ``Visualized and interacted life: Personal analytics and engagem
 
 \bibitem{shapiro2011crdt}
 M.~Shapiro, N.~Pregui\c{c}a, C.~Baquero, and M.~Zawirski, ``Conflict-free replicated data types,'' in \emph{Proc. SSS}. Springer, 2011, pp.~386--400. [Online]. Available: \url{https://doi.org/10.1007/978-3-642-24550-3_29}
-
-\bibitem{wilson2011selfhelp}
-T.~D.~Wilson, \emph{Redirect: The Surprising New Science of Psychological Change}. Little, Brown, 2011.
 
 \end{thebibliography}
 
