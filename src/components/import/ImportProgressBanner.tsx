@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useAppStore, type BackgroundImport } from "@/stores/app-store";
-import { events } from "@/lib/tauri";
-import { CheckCircle, Loader2, X, AlertCircle } from "lucide-react";
+import { commands, events } from "@/lib/tauri";
+import { CheckCircle, Loader2, X, AlertCircle, Sparkles } from "lucide-react";
 
 const STAGE_LABELS: Record<string, string> = {
   scanning: "Scanning",
@@ -21,8 +21,9 @@ function ImportRow({ bg }: { bg: BackgroundImport }) {
 
   // Completed
   if (!bg.running && bg.summary && !bg.error) {
+    const hasNewDocs = bg.summary.documents_imported > 0;
     return (
-      <div className="flex items-center justify-between text-sm py-1">
+      <div className="flex items-center justify-between text-sm py-1.5 gap-3">
         <div className="flex items-center gap-2 text-green-400">
           <CheckCircle size={14} />
           <span>
@@ -32,12 +33,27 @@ function ImportRow({ bg }: { bg: BackgroundImport }) {
               ` (${(bg.summary.duration_ms / 1000).toFixed(1)}s)`}
           </span>
         </div>
-        <button
-          onClick={() => remove(bg.id)}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <X size={14} />
-        </button>
+        <div className="flex items-center gap-2">
+          {hasNewDocs && (
+            <button
+              onClick={() => {
+                remove(bg.id);
+                useAppStore.getState().setView("insights");
+                commands.runAnalysis().catch(() => {});
+              }}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <Sparkles size={12} />
+              Run Analysis
+            </button>
+          )}
+          <button
+            onClick={() => remove(bg.id)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
     );
   }

@@ -353,52 +353,18 @@ fn import_source_blocking(
         status: if result.errors.is_empty() { "success".to_string() } else { "warning".to_string() },
     });
 
-    // Auto-trigger analysis if documents were imported
+    // Emit complete event — frontend will prompt user to run analysis
     if result.documents_imported > 0 {
         let _ = app_handle.emit("import-progress", ImportProgress {
             import_id: import_id.to_string(),
-            stage: "analysis".to_string(),
-            current: 0,
-            total: 0,
-            message: "Running analysis on imported documents...".to_string(),
+            stage: "complete".to_string(),
+            current: result.documents_imported,
+            total: result.documents_imported,
+            message: format!(
+                "Import complete: {} documents ready for analysis",
+                result.documents_imported
+            ),
         });
-
-        // Run analysis in the same call — it will block but the import is already done
-        if let Ok(llm) = state.llm_provider.read() {
-            let analysis_result = tauri::async_runtime::block_on(
-                crate::pipeline::analysis::orchestrator::run_analysis(
-                    state.document_store.as_ref(),
-                    state.timeline_store.as_ref(),
-                    state.memory_store.as_ref(),
-                    state.graph_store.as_ref(),
-                    llm.as_ref(),
-                    None,
-                )
-            );
-            match analysis_result {
-                Ok(ar) => {
-                    tracing::info!(
-                        themes = ar.themes_extracted,
-                        beliefs = ar.beliefs_extracted,
-                        entities = ar.entities_extracted,
-                        "Auto-analysis after import complete"
-                    );
-                    let _ = app_handle.emit("import-progress", ImportProgress {
-                        import_id: import_id.to_string(),
-                        stage: "analysis-complete".to_string(),
-                        current: 0,
-                        total: 0,
-                        message: format!(
-                            "Analysis: {} themes, {} beliefs, {} entities extracted",
-                            ar.themes_extracted, ar.beliefs_extracted, ar.entities_extracted
-                        ),
-                    });
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Auto-analysis failed (non-fatal)");
-                }
-            }
-        }
     }
 
     Ok(result)
