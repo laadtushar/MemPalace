@@ -45,6 +45,7 @@ export function AskView() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ragMode, setRagMode] = useState<string>("auto");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Chat history state
@@ -136,7 +137,8 @@ export function AskView() {
     try {
       const response: RagResponse = await commands.ask(
         question,
-        activeConversationId ?? undefined
+        activeConversationId ?? undefined,
+        ragMode !== "auto" ? ragMode : undefined
       );
       const assistantMsg: LocalMessage = {
         id: crypto.randomUUID(),
@@ -335,7 +337,7 @@ export function AskView() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-border px-6 py-4">
+        <div className="border-t border-border px-6 py-4 space-y-2">
           <div className="flex gap-2">
             <input
               type="text"
@@ -355,6 +357,22 @@ export function AskView() {
             >
               <Send size={16} />
             </button>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>Mode:</span>
+            {["auto", "keyword", "hybrid", "reasoning"].map((m) => (
+              <button
+                key={m}
+                onClick={() => setRagMode(m)}
+                className={`rounded px-2 py-0.5 transition-colors ${
+                  ragMode === m
+                    ? "bg-primary/15 text-primary font-medium"
+                    : "hover:bg-muted"
+                }`}
+              >
+                {m === "auto" ? "Auto" : m === "keyword" ? "Keyword (BM25)" : m === "hybrid" ? "Hybrid" : "Reasoning"}
+              </button>
+            ))}
           </div>
         </div>
       </div>

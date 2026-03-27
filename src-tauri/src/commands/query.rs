@@ -15,30 +15,59 @@ pub struct AskResponse {
 pub async fn ask(
     query: String,
     conversation_id: Option<String>,
+    mode: Option<String>,
     app_handle: tauri::AppHandle,
 ) -> Result<AskResponse, String> {
-    tracing::info!(query_len = query.len(), "RAG query received");
+    let rag_mode = mode.as_deref().unwrap_or("auto");
+    tracing::info!(query_len = query.len(), mode = rag_mode, "RAG query received");
     let start = std::time::Instant::now();
 
-    // Spawn on blocking thread pool — retrieve state via app_handle inside
     let query_clone = query.clone();
+    let mode_clone = rag_mode.to_string();
     let handle = app_handle.clone();
 
     let result = tokio::task::spawn_blocking(move || {
         let state = handle.state::<AppState>();
         let llm = state.llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
-        let embedding = state.embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
-        tauri::async_runtime::block_on(rag_pipeline::query_rag(
-            &query_clone,
-            state.document_store.as_ref(),
-            state.vector_store.as_ref(),
-            state.page_index.as_ref(),
-            state.memory_store.as_ref(),
-            embedding.as_ref(),
-            llm.as_ref(),
-            5,
-        ))
-        .map_err(|e| e.to_string())
+
+        match mode_clone.as_str() {
+            "keyword" => {
+                // BM25-only: no embeddings needed
+                tauri::async_runtime::block_on(rag_pipeline::query_rag_bm25(
+                    &query_clone,
+                    state.document_store.as_ref(),
+                    state.page_index.as_ref(),
+                    state.memory_store.as_ref(),
+                    llm.as_ref(),
+                    5,
+                )).map_err(|e| e.to_string())
+            }
+            "reasoning" => {
+                // PageIndex-inspired: BM25 + LLM re-ranking
+                tauri::async_runtime::block_on(rag_pipeline::query_rag_reasoning(
+                    &query_clone,
+                    state.document_store.as_ref(),
+                    state.page_index.as_ref(),
+                    state.memory_store.as_ref(),
+                    llm.as_ref(),
+                    5,
+                )).map_err(|e| e.to_string())
+            }
+            _ => {
+                // "auto" or "hybrid": standard RAG with embedding fallback
+                let embedding = state.embedding_provider.read().map_err(|e| format!("Lock error: {}", e))?;
+                tauri::async_runtime::block_on(rag_pipeline::query_rag(
+                    &query_clone,
+                    state.document_store.as_ref(),
+                    state.vector_store.as_ref(),
+                    state.page_index.as_ref(),
+                    state.memory_store.as_ref(),
+                    embedding.as_ref(),
+                    llm.as_ref(),
+                    5,
+                )).map_err(|e| e.to_string())
+            }
+        }
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?

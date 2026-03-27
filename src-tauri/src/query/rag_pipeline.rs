@@ -149,6 +149,151 @@ pub async fn query_rag(
     Ok(RagResponse { answer, sources })
 }
 
+/// BM25-only RAG: keyword search + LLM generation. No embeddings needed.
+/// Activates when no embedding provider is available or user selects "keyword" mode.
+pub async fn query_rag_bm25(
+    query: &str,
+    document_store: &dyn IDocumentStore,
+    page_index: &dyn IPageIndex,
+    memory_store: &dyn IMemoryStore,
+    llm: &dyn ILlmProvider,
+    top_k: usize,
+) -> Result<RagResponse, AppError> {
+    // Step 1: FTS5 keyword search only
+    let fts_results = page_index.search(query, top_k * 2).unwrap_or_default();
+
+    // Step 2: Fetch chunks + assemble context
+    let chunk_ids: Vec<String> = fts_results.iter().take(top_k).map(|r| r.chunk_id.clone()).collect();
+    let chunks = document_store.get_chunks_by_ids(&chunk_ids)?;
+
+    let mut sources = Vec::new();
+    let mut context_parts = Vec::new();
+
+    for fts in fts_results.iter().take(top_k) {
+        if let Some(chunk) = chunks.iter().find(|c| c.id == fts.chunk_id) {
+            let timestamp = document_store.get_by_id(&chunk.document_id).ok().flatten()
+                .and_then(|d| d.timestamp.map(|t| t.to_rfc3339())).unwrap_or_default();
+            context_parts.push(format!("[{}] {}", timestamp.get(..10).unwrap_or("unknown"), chunk.text));
+            sources.push(RagSource {
+                chunk_id: fts.chunk_id.clone(),
+                document_id: chunk.document_id.clone(),
+                text_snippet: chunk.text.chars().take(200).collect(),
+                timestamp, score: fts.rank_score,
+            });
+        }
+    }
+
+    // Step 3: Memory augmentation
+    let memory_facts = memory_store.recall(query, 10).unwrap_or_default();
+    let memories_text = if memory_facts.is_empty() {
+        "No relevant memories found.".to_string()
+    } else {
+        memory_facts.iter()
+            .map(|f| format!("- {} (confidence: {:.0}%)", f.fact_text, f.confidence * 100.0))
+            .collect::<Vec<_>>().join("\n")
+    };
+
+    // Step 4: LLM generation
+    let prompt = render_template(RAG_RESPONSE_V1, &[
+        ("context", &context_parts.join("\n\n")),
+        ("memories", &memories_text),
+        ("query", query),
+    ]);
+    let params = LlmParams { temperature: Some(0.5), max_tokens: Some(2048), ..Default::default() };
+    let answer = llm.complete(&prompt, &params).await?;
+
+    Ok(RagResponse { answer, sources })
+}
+
+/// Reasoning-enhanced RAG (PageIndex-inspired): BM25 pre-filter → LLM re-ranks → generate.
+/// More accurate for complex queries but costs an extra LLM call.
+pub async fn query_rag_reasoning(
+    query: &str,
+    document_store: &dyn IDocumentStore,
+    page_index: &dyn IPageIndex,
+    memory_store: &dyn IMemoryStore,
+    llm: &dyn ILlmProvider,
+    top_k: usize,
+) -> Result<RagResponse, AppError> {
+    // Step 1: BM25 pre-filter — get broad candidates
+    let fts_results = page_index.search(query, top_k * 4).unwrap_or_default();
+    let chunk_ids: Vec<String> = fts_results.iter().map(|r| r.chunk_id.clone()).collect();
+    let chunks = document_store.get_chunks_by_ids(&chunk_ids)?;
+
+    // Step 2: LLM re-ranking — ask LLM to score relevance of each candidate
+    let mut candidates: Vec<(String, String, String, f64)> = Vec::new(); // (chunk_id, doc_id, text, score)
+    for fts in fts_results.iter().take(20) {
+        if let Some(chunk) = chunks.iter().find(|c| c.id == fts.chunk_id) {
+            candidates.push((
+                fts.chunk_id.clone(),
+                chunk.document_id.clone(),
+                chunk.text.chars().take(300).collect(),
+                0.0,
+            ));
+        }
+    }
+
+    if !candidates.is_empty() {
+        // Build re-ranking prompt
+        let snippets: Vec<String> = candidates.iter().enumerate()
+            .map(|(i, (_, _, text, _))| format!("[{}] {}", i + 1, text))
+            .collect();
+        let rerank_prompt = format!(
+            "Given the query: \"{}\"\n\nRate the relevance of each passage (1=not relevant, 5=highly relevant). \
+             Respond with ONLY a JSON array of numbers, e.g. [3, 5, 1, ...]\n\nPassages:\n{}",
+            query, snippets.join("\n\n")
+        );
+        let params = LlmParams { temperature: Some(0.1), max_tokens: Some(200), ..Default::default() };
+        if let Ok(response) = llm.complete(&rerank_prompt, &params).await {
+            // Parse scores
+            let scores_str = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+            if let Ok(scores) = serde_json::from_str::<Vec<f64>>(scores_str) {
+                for (i, score) in scores.iter().enumerate() {
+                    if i < candidates.len() {
+                        candidates[i].3 = *score;
+                    }
+                }
+            }
+        }
+        // Sort by LLM relevance score (descending)
+        candidates.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    }
+
+    // Step 3: Take top-k re-ranked results
+    let mut sources = Vec::new();
+    let mut context_parts = Vec::new();
+    for (chunk_id, doc_id, text, score) in candidates.iter().take(top_k) {
+        let timestamp = document_store.get_by_id(doc_id).ok().flatten()
+            .and_then(|d| d.timestamp.map(|t| t.to_rfc3339())).unwrap_or_default();
+        context_parts.push(format!("[{}] {}", timestamp.get(..10).unwrap_or("unknown"), text));
+        sources.push(RagSource {
+            chunk_id: chunk_id.clone(), document_id: doc_id.clone(),
+            text_snippet: text.chars().take(200).collect(),
+            timestamp, score: *score,
+        });
+    }
+
+    // Step 4: Memory augmentation + LLM generation (same as standard)
+    let memory_facts = memory_store.recall(query, 10).unwrap_or_default();
+    let memories_text = if memory_facts.is_empty() {
+        "No relevant memories found.".to_string()
+    } else {
+        memory_facts.iter()
+            .map(|f| format!("- {} (confidence: {:.0}%)", f.fact_text, f.confidence * 100.0))
+            .collect::<Vec<_>>().join("\n")
+    };
+
+    let prompt = render_template(RAG_RESPONSE_V1, &[
+        ("context", &context_parts.join("\n\n")),
+        ("memories", &memories_text),
+        ("query", query),
+    ]);
+    let params = LlmParams { temperature: Some(0.5), max_tokens: Some(2048), ..Default::default() };
+    let answer = llm.complete(&prompt, &params).await?;
+
+    Ok(RagResponse { answer, sources })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

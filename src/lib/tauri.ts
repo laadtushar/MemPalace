@@ -300,8 +300,8 @@ export const commands = {
     invoke<QuickSearchResult[]>("quick_search", { query }),
 
   // RAG
-  ask: (query: string, conversationId?: string) =>
-    invoke<RagResponse>("ask", { query, conversationId }),
+  ask: (query: string, conversationId?: string, mode?: string) =>
+    invoke<RagResponse>("ask", { query, conversationId, mode }),
 
   // Timeline + Memory
   getTimelineData: () => invoke<TimelineDataResponse>("get_timeline_data"),
