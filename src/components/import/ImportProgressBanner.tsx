@@ -14,6 +14,15 @@ const STAGE_LABELS: Record<string, string> = {
   analysis: "Analyzing",
   "analysis-complete": "Analysis Complete",
   complete: "Complete",
+  // Analysis pipeline stages
+  themes: "Extracting themes",
+  sampling: "Sampling documents",
+  sentiment: "Classifying sentiment",
+  beliefs: "Extracting beliefs",
+  entities: "Extracting entities",
+  insights: "Generating insights",
+  contradictions: "Detecting contradictions",
+  narratives: "Generating narratives",
 };
 
 function TaskRow({ task }: { task: BackgroundTask }) {
@@ -149,12 +158,12 @@ export function ImportProgressBanner() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     events.onAnalysisProgress((p) => {
-      // Update the running analysis task with stage info
       const s = useAppStore.getState();
       const analysisTask = s.backgroundTasks.find((t) => t.type === "analysis" && t.running);
       if (analysisTask) {
         s.updateTask(analysisTask.id, {
-          label: `Analysis: ${p.stage} — ${p.message}`,
+          label: "Analyzing",
+          progress: { import_id: analysisTask.id, stage: p.stage, current: 0, total: 0, message: p.message },
         });
       }
     }).then((fn) => { unlisten = fn; });

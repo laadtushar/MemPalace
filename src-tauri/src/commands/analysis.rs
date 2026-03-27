@@ -21,10 +21,6 @@ pub async fn run_analysis(
     tracing::info!(granularity = ?granularity, "Starting analysis");
     let start = std::time::Instant::now();
 
-    let _ = app_handle.emit("analysis-progress", AnalysisProgress {
-        stage: "starting".into(), message: "Starting analysis...".into(),
-    });
-
     let config = AnalysisConfig {
         granularity: TimeGranularity::from_str_opt(granularity.as_deref()),
     };
@@ -33,13 +29,20 @@ pub async fn run_analysis(
     tokio::task::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let llm = state.llm_provider.read().map_err(|e| format!("Lock error: {}", e))?;
-        let result = tauri::async_runtime::block_on(orchestrator::run_analysis(
+        let ah = app_handle.clone();
+        let result = tauri::async_runtime::block_on(orchestrator::run_analysis_with_progress(
             state.document_store.as_ref(),
             state.timeline_store.as_ref(),
             state.memory_store.as_ref(),
             state.graph_store.as_ref(),
             llm.as_ref(),
             Some(config),
+            move |stage, message| {
+                let _ = ah.emit("analysis-progress", AnalysisProgress {
+                    stage: stage.to_string(),
+                    message: message.to_string(),
+                });
+            },
         ))
         .map_err(|e| {
             tracing::error!(error = %e, "Analysis failed");

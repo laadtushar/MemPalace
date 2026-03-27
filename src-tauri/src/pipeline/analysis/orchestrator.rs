@@ -52,6 +52,19 @@ pub async fn run_analysis(
     llm: &dyn ILlmProvider,
     config: Option<AnalysisConfig>,
 ) -> Result<AnalysisResult, AppError> {
+    run_analysis_with_progress(document_store, timeline_store, memory_store, graph_store, llm, config, |_, _| {}).await
+}
+
+/// Run the full analysis pipeline with a progress callback invoked at each stage.
+pub async fn run_analysis_with_progress(
+    document_store: &dyn IDocumentStore,
+    timeline_store: &dyn ITimelineStore,
+    memory_store: &dyn IMemoryStore,
+    graph_store: &dyn IGraphStore,
+    llm: &dyn ILlmProvider,
+    config: Option<AnalysisConfig>,
+    on_progress: impl Fn(&str, &str),
+) -> Result<AnalysisResult, AppError> {
     let config = config.unwrap_or_default();
     // Check LLM availability
     if !llm.is_available().await {
@@ -62,6 +75,7 @@ pub async fn run_analysis(
     }
 
     // Stage 1: Theme extraction
+    on_progress("themes", "Extracting themes...");
     log::info!("Analysis: extracting themes...");
     let themes = theme_extractor::extract_themes(
         document_store,
@@ -74,6 +88,7 @@ pub async fn run_analysis(
     log::info!("Analysis: extracted {} themes", themes.len());
 
     // Stage 2: Sample chunks for belief extraction and sentiment
+    on_progress("sampling", "Sampling documents...");
     log::info!("Analysis: sampling chunks...");
     let months = timeline_store.get_document_count_by_month()?;
     let mut all_chunks: Vec<(String, String)> = Vec::new();
@@ -101,6 +116,7 @@ pub async fn run_analysis(
     }
 
     // Stage 3: Sentiment classification on sampled chunks
+    on_progress("sentiment", &format!("Classifying sentiment on {} chunks...", all_chunks.len()));
     log::info!("Analysis: classifying sentiment on {} chunks...", all_chunks.len());
     let sentiment_results = if !all_chunks.is_empty() {
         // Limit to 20 chunks to avoid excessive LLM calls
@@ -113,6 +129,7 @@ pub async fn run_analysis(
     log::info!("Analysis: classified {} sentiments", sentiments_classified);
 
     // Stage 4: Belief extraction
+    on_progress("beliefs", "Extracting beliefs...");
     log::info!("Analysis: extracting beliefs...");
     let beliefs = if !all_chunks.is_empty() {
         belief_extractor::extract_beliefs(&all_chunks, llm).await?
@@ -137,6 +154,7 @@ pub async fn run_analysis(
     }
 
     // Stage 5: Entity extraction → graph store
+    on_progress("entities", "Extracting entities...");
     log::info!("Analysis: extracting entities...");
     let entities_with_sources = entity_extractor::extract_entities(&all_chunks, llm, 15).await?;
     let entities_extracted = entities_with_sources.len();
@@ -148,6 +166,7 @@ pub async fn run_analysis(
     log::info!("Analysis: extracted {} entities", entities_extracted);
 
     // Stage 6: Insight generation
+    on_progress("insights", "Generating insights...");
     log::info!("Analysis: generating insights...");
     let insights = insight_generator::generate_insights(&themes, &beliefs, llm, 5).await?;
     log::info!("Analysis: generated {} insights", insights.len());
@@ -172,6 +191,7 @@ pub async fn run_analysis(
     }
 
     // Stage 7: Contradiction detection
+    on_progress("contradictions", "Detecting contradictions...");
     log::info!("Analysis: detecting contradictions...");
     let contradictions_found = match contradiction_detector::detect_contradictions(
         memory_store,
@@ -190,6 +210,7 @@ pub async fn run_analysis(
     };
 
     // Stage 8: Narrative generation (final stage)
+    on_progress("narratives", "Generating narratives...");
     log::info!("Analysis: generating narratives...");
     let narratives_generated = match narrative_generator::generate_narratives(
         document_store,
